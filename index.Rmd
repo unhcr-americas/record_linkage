@@ -1,5 +1,5 @@
 ---
-title: "Record Linkage"
+title: "Record Linkage & Deduplication"
 subtitle: "Identify and Remove duplicate with {fastlink}"
 date: "`r format(Sys.Date(),  '%d %B %Y')`"
 output:
@@ -8,7 +8,7 @@ output:
     nature:
       highlightStyle: github
       highlightLines: true
-      countIncrementalSlides: false
+      countIncrementalSlides: true
       ratio: "16:9"
 ---
 
@@ -40,7 +40,6 @@ data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
 
 Imagine you need to lnk your registration database with a list of beneficiaries created by a partner....
 
-
 > Record linkage (_also called de-duplication or Entity resolution_) is the process of joining multiple data sets removes duplicate entities often in the absence of a unique identifier.
 
 Needed for instance, when reconciling multiple registration list to build a single sampling universe when preparing for a survey in the absence of a common registration database...
@@ -49,7 +48,6 @@ Exact matching is a method that says two records are a match if they agree on ev
 
 Performing exact matching is often not do-able when reconciling registration list with individual data coming from different partners as many issues can arise when trying to match only on names.  In such cases Matching that allows fields to __only be similar__ rather than exact duplicates will likely be more robust.
 
-
 ---
 
 ## Challenges with individuals matching 
@@ -57,7 +55,7 @@ Performing exact matching is often not do-able when reconciling registration lis
 
 .pull-left[  
 
-To be fixed... 
+What needs to be fixed... 
 
 * Spelling of names and first names can be different
 
@@ -92,7 +90,7 @@ The recommended workflow includes to go through specific steps:
 
  * Perform Comparison
  
- * Review Results and set up threshold
+ * Review results based on acceptation threshold
 
 ]
 .pull-right[
@@ -142,39 +140,6 @@ data.prep <- data |>
 ```
 ]
 
----
-
-## Pre-processing: Date
-
-.pull-left[  
-
-
-
-Turn Date of Birth to Year-Month and Age
-
-Turn Age to Age Cohort
-
-]
-.pull-right[ 
-
-```
-data.prep <- data |>
-  
-dplyr::mutate(
-
-  dob_day = as.numeric(
-      lubridate::day(RecipientDateOfBirth)),
-  
-  dob_month = as.numeric(
-      lubridate::month(RecipientDateOfBirth)),
-  
-  dob_year = as.numeric(year(
-      lubridate::RecipientDateOfBirth)),
-  
-  DOB = RecipientDateOfBirth)
-    
-```
-]
 
 ---
 
@@ -249,6 +214,52 @@ for (tR in toRemove) {
 
 ---
 
+## Pre-processing: Date
+
+.pull-left[  
+
+
+
+Turn Date of Birth to Year-Month and Age
+
+Turn Age to Age Cohort
+
+]
+.pull-right[ 
+
+```
+data.prep <- data |>
+  
+dplyr::mutate(
+  DateOfBirth = lubridate::as_date(DoB),
+  
+  dob_day = as.numeric(
+      lubridate::day(DateOfBirth)),
+  
+  dob_month = as.numeric(
+      lubridate::month(DateOfBirth)),
+  
+  dob_year = as.numeric(year(
+      lubridate::year(DateOfBirth)),
+      
+  age = today()-     
+  
+  age_cohort = dplyr::case_when(
+    genero %in% c("F" ,"FEMENINO" ,
+                   "f",  "Femenino") ~ "F",
+                   
+    genero %in% c("M" , "MASCULINO" , 
+                   "Masculino") ~ "M",
+                   
+    genero %in% c("X",  "Otro") ~ "Ot",
+    TRUE ~  NA  )   )
+    
+```
+]
+
+
+---
+
 ## Pre-processing: Separate name 
 
 
@@ -263,14 +274,36 @@ identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
 .pull-right[ 
 
 ```
-   toRemove = c(" JR", " SR", " IV", " III", " II") 
-  # Remove specified name suffixes
-  for (tR in toRemove) {
-    names_column_new <- gsub(tR, "", names_column_new)
-  }
+
+
+
 ```
 ]
 
+
+ 
+
+---
+
+## Pipe the treatment
+
+
+.pull-left[ 
+
+Each steps described above to be:
+
+ * organised within functions
+ 
+ * piped using the tidyverse approach
+ 
+ [Revise this presentation notebook to use the functions]()
+ 
+ ]
+.pull-right[ 
+
+![](pipe.png)
+]
+ 
 
 ```{r function-separate_fullname, include=FALSE}
 #' separate_name
@@ -304,27 +337,6 @@ sep <- separate_fullname(fullname, namepattern)
 ```
  
  
-
----
-
-## Pipe the treatment
-
-
-.pull-left[ 
-
-Each steps described above to be:
-
- * organised within functions
- 
- * piped using the tidyverse approach
- 
- ]
-.pull-right[ 
-
-![](pipe.png)
-]
- 
-
     
 ```{r function-cleanvar, include=FALSE}
 #' cleanvar
@@ -354,7 +366,9 @@ cleanvar <- function(names_column,
   
   return(names_column_new)
 }
+
 ```
+
 
 
   
@@ -449,15 +463,13 @@ Deterministic, i.e Automatic comparisons where either everything needs to match,
 
 ---
 
-## Compare linkage 
+## Compare linkage with {fastlink}
 
 
 ``` 
-# Using the fastLink R package for record linkage
-
-test <- fastLink::fastLink(
-         dfA = dfA, 
-         dfB = dfB, 
+matches.out <- fastLink::fastLink(
+             dfA = dfA, 
+             dfB = dfB, 
                  
          # Specify the vector of variable names to be used for matching.
          # These variable names should exist in both dfA and dfB
@@ -473,12 +485,14 @@ test <- fastLink::fastLink(
         # Must be a subset of 'varnames' and must not be present in 'stringdist.match'.
         numeric.match = c('dob_day', 'dob_month', 'dob_year'),
         
-        # Specify the number of CPU cores to utilize (parallel processing). The default value is NULL.
-        n.cores = numCores, 
-        return.df = TRUE
-)
+        # Specify the number of CPU cores to utilize (parallel processing). 
+        ## Get the number of detected cores minus 1,  Reserve one core for 
+        #non-computational tasks to help prevent system slowdowns or unresponsiveness
+        n.cores = parallel::detectCores() - 1,
+        return.df = TRUE)
 ```
-
+???
+The default threshold for matches is 0.94 (threshold.match =) but you can adjust it higher or lower. If you define the threshold, consider that higher thresholds could yield more false-negatives (rows that do not match which actually should match) and likewise a lower threshold could yield more false-positive matches.
 
 ---
 
@@ -488,7 +502,7 @@ test <- fastLink::fastLink(
 
 .pull-left[ 
 
-Last stage involves a manual review of the results
+Last stage involves a manual __clerical review__ of the results, specifically the  __Possible Matches__
  
  ]
 .pull-right[ 
@@ -496,28 +510,133 @@ Last stage involves a manual review of the results
 ![](evaluation.png)
 ]
 
+---
 
+## Evaluation metrics
+ 
+
+> The posterior probability refers to the  updated probability of an event occurring given some observed data using Bayesian inference. It represents the "strength of the matches"  and is a combination of the initial belief and the new evidence. 
+
+List of parameter estimates for different fields:
+
+ *  __patterns.w__: Counts of the agreement patterns observed (2 = match, 1 = partial match, 0 = non-match), along with the Felligi-Sunter Weights.
+
+ *  __iter.converge__: The number of iterations it took the EM algorithm to converge.
+
+ *  __zeta.j__: The posterior match probabilities for each unique pattern.
+
+ *  __p.m__ & __p.u__ : The posterior probability of a pair matching (m) & pair not matching (u).
+
+ *  __p.gamma.k.m__ & __p.gamma.k.u__: The posterior of the matching probability (m) & non-matching probability (u) for a specific matching field.
+
+ *  __p.gamma.j.m__ & __p.gamma.j.u__: The posterior probability that a pair is in the matched set (m) or in the unmatched set (u)  given a particular agreement pattern.
+
+
+???
+ *  __nobs.a__: The number of observations in dataset A.
+
+ *  __nobs.b__: The number of observations in dataset B.
 
 ---
 
-## Iterate over multiple sources 
+##  Function to get the metrics
 
-```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-source1_CARITASBOLIVIA_CARITASBOL  <- data.prep |> 
-  dplyr::filter(datasource=="CARITASBOLIVIA_CARITASBOL ") |> 
-  dplyr::select( - datasource)
+```
+# Confusion Matrice
+fastLink::confusion(matches.out, threshold = 0.98)
 
-source2_FMK_DATOSCALLELAPAZELALTO <- data.prep |> 
-  dplyr::filter(datasource ==" FMK_DATOSCALLELAPAZELALTO")|> 
-  dplyr::select( - datasource)
+# Examine the EM object:
+matches.out$EM
 
-# source3_FUSB <- data.prep |>
-#   dplyr::filter(socio=="FUSB")|> 
-#   dplyr::select( - socio)
+# Summarize the accuracy of the match:
+# each column gives the match count, match rate,
+# false discovery rate (FDR) and false negative rate (FNR)
+# under different cutoffs for matches based on the posterior 
+# probability of a match. 
+summary(matches.out)
 
-``` 
+## Get the output...
+matched_dfs <- fastLink::getMatches(
+                      dfA = dfA, 
+                      dfB = dfB, 
+                      fl.out = matches.out, 
+                      threshold.match = 0.85
+)
 
+
+
+```
+
+---
+
+## Join based on the probabilistic matches
+
+ 
+```
+# convert cases rownames to a column 
+cases_clean <- cases %>% rownames_to_column()
+
+# convert test_results rownames to a column
+results_clean <- results %>% rownames_to_column()  
+
+# convert all columns in matches dataset to character, 
+#so they can be joined to the rownames
+matches_clean <- my_matches %>%
+  mutate(across(everything(), as.character))
+
+
+
+# Join matches to dfA, then add dfB
+# column "inds.b" is added to dfA
+complete <- left_join(cases_clean, matches_clean, by = c("rowname" = "inds.a"))
+
+# column(s) from dfB are added 
+complete <- left_join(complete, results_clean, by = c("inds.b" = "rowname"))
+```
+
+---
+
+## Iterate over multiple sources comparionsr
+
+Often, we run several different matches for a single data set - for instance when there are multiple list or blocking options
+
+```
+#Preprocessing Matches via Blocking
+blockgender_out <- blockData(dfA, dfB, varnames = "gender")
+
+## Subset dfA into blocks
+dfA_block1 <- dfA[blockgender_out$block.1$dfA.inds,]
+dfA_block2 <- dfA[blockgender_out$block.2$dfA.inds,]
+
+## Subset dfB into blocks
+dfB_block1 <- dfB[blockgender_out$block.1$dfB.inds,]
+dfB_block2 <- dfB[blockgender_out$block.2$dfB.inds,]
+
+```
+
+---
+
+## Aggregating Multiple Matches Together
+
+ 
+```
+## Run fastLink on each
+link.1 <- fastLink(
+  dfA_block1, dfB_block1,
+  varnames = c("firstname", "lastname", "housenum",
+               "streetname", "city", "birthyear")
+) 
+
+link.2 <- fastLink(
+  dfA_block2, dfB_block2,
+  varnames = c("firstname", "lastname", "housenum",
+               "streetname", "city", "birthyear")
+)
+
+## aggregate multiple matches into a single summary with aggregateEM() 
+agg.out <- aggregateEM(em.list = list(link.1, link.2))
+```
 
 ---
 
@@ -532,5 +651,7 @@ Please [post here your questions](https://github.com/unhcr-americas/record_linka
 
 [Presentation from UN Stat Commission](https://www.youtube.com/watch?v=S7boX8X4uXU) - a practical example from DANE in Colombia - matching a survey - - Gran encuesta integrada de hogares (GEIH) - with a registry - Registro Estadístico de Relaciones Laborales (RELAB) - 
 
+[A tutorial on Probabilistic matching from The Epidemiologist R Handbook](https://epirhandbook.com/en/joining-data.html#probabalistic-matching)
 
+[Using a Probabilistic Model to Assist Merging of Large-scale Administrative Records](http://imai.fas.harvard.edu/research/linkage.html)
 
