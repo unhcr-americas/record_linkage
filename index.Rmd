@@ -1,0 +1,536 @@
+---
+title: "Record Linkage"
+subtitle: "Identify and Remove duplicate with {fastlink}"
+date: "`r format(Sys.Date(),  '%d %B %Y')`"
+output:
+  unhcrdown::html_slides:
+    self_contained: true
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  fig.showtext = TRUE
+)
+library(tidyverse)
+library(unhcrthemes)
+library(fontawesome)
+# install.packages("RecordLinkage")
+# library(RecordLinkage)
+# install.packages("fastLink")
+library(fastLink) 
+```
+
+
+
+```{r include=FALSE}
+data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
+    sheet = "Sheet1") |> janitor::clean_names()
+#names(data)
+```
+
+##  Introduction
+
+Imagine you need to lnk your registration database with a list of beneficiaries created by a partner....
+
+
+> Record linkage (_also called de-duplication or Entity resolution_) is the process of joining multiple data sets removes duplicate entities often in the absence of a unique identifier.
+
+Needed for instance, when reconciling multiple registration list to build a single sampling universe when preparing for a survey in the absence of a common registration database...
+
+Exact matching is a method that says two records are a match if they agree on every feature. Exact matching ONLY works well if the linking data are perfect and present in all the databases you want to link works best when there is a single unique identifier (key/uuid). 
+
+Performing exact matching is often not do-able when reconciling registration list with individual data coming from different partners as many issues can arise when trying to match only on names.  In such cases Matching that allows fields to __only be similar__ rather than exact duplicates will likely be more robust.
+
+
+---
+
+## Challenges with individuals matching 
+
+
+.pull-left[  
+
+To be fixed... 
+
+* Spelling of names and first names can be different
+
+* Occurrence of special characters and space
+
+* Usage of multiple names compounded together (father name + mother name)
+
+* Usage of data of Birth Vs Age..
+
+* not the same exact data available on each list
+
+* multiple lists to merge together (more than 2!)
+
+]
+.pull-right[
+![](record-linkage.png)
+]
+
+ 
+---
+
+##  Workflow
+
+
+.pull-left[  
+
+The recommended workflow includes to go through specific steps:
+
+ * Data Pre-processing
+ 
+ * Identify blocking variables: Reduction of search space: Blocking
+
+ * Perform Comparison
+ 
+ * Review Results and set up threshold
+
+]
+.pull-right[
+![](concept.png)
+]
+
+???
+To minimize the number of computation, it is important to perform Record linkage only within the blocks, i.e. to block partitions similar records into bins or blocks.
+
+
+---
+
+## Pre-processing: Cleaning & Harmonisation
+
+.pull-left[  
+
+Keep only people with phone number
+
+Common fields in the data to be identified and harmonized (Clean Gender or Nationality...) 
+
+
+
+]
+.pull-right[ 
+
+```
+data.prep <- data |>
+  
+  ## Filter when phone number is not available  
+  dplyr::filter( telefono != "NO REFIERE") |>
+  
+  ## Clean the gender variable
+  # data |> dplyr::select(genero) |> 
+  # dplyr::distinct() |> dplyr::pull()
+  
+  dplyr::mutate(gender = dplyr::case_when(
+    genero %in% c("F" ,"FEMENINO" ,
+                   "f",  "Femenino") ~ "F",
+                   
+    genero %in% c("M" , "MASCULINO" , 
+                   "Masculino") ~ "M",
+                   
+    genero %in% c("X",  "Otro") ~ "Ot",
+    TRUE ~  NA  ))  
+    
+    
+```
+]
+
+---
+
+## Pre-processing: Date
+
+.pull-left[  
+
+
+
+Turn Date of Birth to Year-Month and Age
+
+Turn Age to Age Cohort
+
+]
+.pull-right[ 
+
+```
+data.prep <- data |>
+  
+dplyr::mutate(
+
+  dob_day = as.numeric(
+      lubridate::day(RecipientDateOfBirth)),
+  
+  dob_month = as.numeric(
+      lubridate::month(RecipientDateOfBirth)),
+  
+  dob_year = as.numeric(year(
+      lubridate::RecipientDateOfBirth)),
+  
+  DOB = RecipientDateOfBirth)
+    
+```
+]
+
+---
+
+## Pre-processing: String  
+
+.pull-left[  
+
+String treatment
+
+* Remove Punctuation
+
+* Convert to Upper Case
+
+* Address special characters and encoding
+]
+.pull-right[ 
+
+```
+  #  Convert to uppercase
+  names_column_new <- toupper(names_column)
+  
+  # Remove punctuation, digits, and all spaces
+  names_column_new <- gsub(
+      "[[:punct:][:digit:]][[:space:]]", 
+      "", 
+      names_column_new)
+
+  # Convert special char to ASCII equivalents
+  names_column_new <- iconv(
+             names_column_new, 
+             "latin1", 
+             "ASCII//TRANSLIT",
+              sub = "")
+  
+  # Keep only alphabetic characters
+  names_column_new <- gsub(
+            "[^[:alpha:]]",
+            "",
+            names_column_new)
+```
+]
+
+---
+
+## Pre-processing: Common words & Stop words
+
+.pull-left[  
+
+ Remove user defined list of common words.
+
+ Common words within names like  __"JR", " SR", " IV", " III", " II"__ may prevent good matching and can be removed.
+ 
+ Needs to be contextualized to the cultural context.
+]
+.pull-right[ 
+
+```
+## Define list of words to remove
+toRemove = c(" JR", " SR", 
+                " IV", " III", " II")
+                
+# Remove specified name suffixes
+for (tR in toRemove) {
+    names_column_new <- gsub(
+          tR, 
+          "", 
+          names_column_new)
+  }
+  
+```
+]
+
+---
+
+## Pre-processing: Separate name 
+
+
+.pull-left[  
+
+Use the name pattern to separate the name
+
+ in case family name is more than one word, 
+
+identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
+]
+.pull-right[ 
+
+```
+   toRemove = c(" JR", " SR", " IV", " III", " II") 
+  # Remove specified name suffixes
+  for (tR in toRemove) {
+    names_column_new <- gsub(tR, "", names_column_new)
+  }
+```
+]
+
+
+```{r function-separate_fullname, include=FALSE}
+#' separate_name
+#' 
+#' use the name pattern to separate the name
+#' in case family name is more than one word, 
+#'  identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
+#' @param fullname full name including everything together
+#' @param namepattern either "firstname_fathername_mother_name" or "fathername_mothername_firstname
+#' @return a list with c("firstname","fathername","mothername")
+#' 
+#' @export
+separate_fullname <- function(fullname, namepattern){
+    
+  # ### 
+  # sp <- tidyr::separate(fullname, " ")
+  # 
+  # return(sp)
+}
+
+test <- data |> 
+        dplyr::filter(  is.na(nombres) ) |> 
+        dplyr::select(nombre_completo, name_pattern)  
+
+fullname <- test$nombre_completo
+namepattern <- test$name_pattern
+sep <- separate_fullname(fullname, namepattern)
+
+# data |> dplyr::select(  name_pattern) |> dplyr::distinct() |> dplyr::pull()
+
+```
+ 
+ 
+
+---
+
+## Pipe the treatment
+
+
+.pull-left[ 
+
+Each steps described above to be:
+
+ * organised within functions
+ 
+ * piped using the tidyverse approach
+ 
+ ]
+.pull-right[ 
+
+![](pipe.png)
+]
+ 
+
+    
+```{r function-cleanvar, include=FALSE}
+#' cleanvar
+#' 
+#' function for data cleaning with additional name removal logic
+#' 
+#' @param names_column name of the column to treat
+#' @param  toRemove  default vector with stuff to remove from name
+#'                    c(" JR", " SR", " IV", " III", " II")
+#' @return  names_column_new name of the column treat
+#' 
+#' @export
+cleanvar <- function(names_column,
+                      toRemove = c(" JR", " SR", " IV", " III", " II")) {
+  #  Convert to uppercase
+  names_column_new <- toupper(names_column)
+  # Remove specified name suffixes
+  for (tR in toRemove) {
+    names_column_new <- gsub(tR, "", names_column_new)
+  }
+  # Convert special characters to ASCII equivalents
+  names_column_new <- iconv(names_column_new, "latin1", "ASCII//TRANSLIT", sub = "")
+  # Remove punctuation, digits, and all spaces
+  names_column_new <- gsub("[[:punct:][:digit:]][[:space:]]", "", names_column_new)
+  # Create a new variable with only alphabetic characters
+  names_column_new <- gsub("[^[:alpha:]]", "", names_column_new)
+  
+  return(names_column_new)
+}
+```
+
+
+  
+```{r example-cleanvar, include=FALSE}
+## Filter the right nationality
+data.prep <- data |>
+  
+  ## Filter where the phone number is not available -- "NO REFIERE"
+  dplyr::filter( telefono != "NO REFIERE") |>
+  
+  ## Clean age_range
+  # dplyr::mutate( age_range = dplyr::case_when(
+  #   !(is.null(edad)) & (edad <5 ) ~ "0-4",
+  #   genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
+  #   genero %in% c("X",  "Otro") ~ "Ot",
+  #   TRUE ~  age_range  )) |>
+  
+  ## Clean the gender variable
+  # data |> dplyr::select(genero) |> dplyr::distinct() |> dplyr::pull()
+  dplyr::mutate(gender = dplyr::case_when(
+    genero %in% c("F" ,"FEMENINO" ,"f",  "Femenino") ~ "F",
+    genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
+    genero %in% c("X",  "Otro") ~ "Ot",
+    TRUE ~  NA  )) |>
+  
+  ## Only retain the nationality of interest
+  # data |> dplyr::select(nacionalidad) |> dplyr::distinct() |> dplyr::pull()
+  dplyr::mutate(nationality = dplyr::case_when(
+    nacionalidad %in% c("Venzuela", "venezuela",  "Venezolana", 
+                                     "VENEZUELA",
+                                     "Venezuela", "VENEZOLANO", "VENEZOLANA") ~ "VEN",
+    nacionalidad %in% c("COLOMBIANO", "COLOMBIANA", "COLOMBIA",
+                                    "colombia", "Colombia", "Nac. Colombia",
+                                    "Colombiana" ) ~ "COL",
+    TRUE ~ "other"  )) |>
+  dplyr::filter( nationality %in% c("VEN", "COL" ))
+```
+
+
+```{r example-cleanvar2, include=FALSE}
+data.prep <- data.prep |>
+  ## Apply cleanvar()
+  # Perform data cleaning on dfA using the clean_names function
+  dplyr::mutate_at( dplyr::vars(nombres, apellido_paterno, apellido_materno,
+                                asistencia, departamento, telefono,
+                                planilla, socio), 
+                   list(new = cleanvar))  |>
+  
+  
+  ### identify single data source
+  dplyr::mutate(datasource = paste0(socio_new, "_", planilla_new)) |>
+  
+  # ## Retain only fields for record linkage
+  dplyr::select(datasource, nationality, nombres_new, apellido_paterno_new,
+                   apellido_materno_new, asistencia_new, departamento_new,
+                   telefono_new, gender)
+  
+# table(data.prep$gender, useNA = "ifany") 
+# table(data.prep$nationality, useNA = "ifany") 
+# table(data.prep$datasource, useNA = "ifany")
+# ## See if can use departamento for blocking
+# table(data.prep$datasource, data.prep$departamento_new, useNA = "ifany")
+#dput(names(data.prep)) 
+```
+  
+ 
+
+---
+
+## Reduction of search space: Blocking
+
+To minimize the number of computation, it is important to perform Record linkage only within the blocks, i.e. __to partition similar records into bins__
+ 
+A deterministic partition can be formed based upon the data. This imply to choose the blocking features (variables or keys) containing the fewest errors or missing values should be chosen as blocking variables. A partition is then created by treating certain fields that are thought to be nearly error-free as fixed, 
+
+> for instance a Partition of date of birth year or age range. 
+
+An alternative is to use multiple keys to consider typographical or measurement errors that would exclude true matches. For instance, Blocking by last name initial or zip code. This produces overlapping blocks of the data: records match on field A or field B
+ 
+
+---
+
+## Comparison: String Matching
+
+Deterministic, i.e Automatic comparisons where either everything needs to match, or specific data specific rules are programmed. Though this Needs new rule for every variation in data, which therefore can not be generalizable to other datasets
+
+ * Levenshtein distance is the minimum number of substitutions required to transform one string into another.
+ 
+ * The Jaro distance considers common characters and character transpositions. 
+ 
+ *  The Soundex algorithm generates a code representing the phonetic pronunciation of a word. This is typicall more useful on non-English names or longer names. The Soundex code for a name consists of a letter followed by three numerical digits.
+
+---
+
+## Compare linkage 
+
+
+``` 
+# Using the fastLink R package for record linkage
+
+test <- fastLink::fastLink(
+         dfA = dfA, 
+         dfB = dfB, 
+                 
+         # Specify the vector of variable names to be used for matching.
+         # These variable names should exist in both dfA and dfB
+         varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'),
+        
+        # Specify which variables among varnames should be compared using string distance
+        stringdist.match = c('FN', 'LN'),
+        
+        # Specify which variables present in  stringdist.match can be partially matched
+        partial.match = c('FN', 'LN'),
+        
+        # Specify which variables should be matched numerically
+        # Must be a subset of 'varnames' and must not be present in 'stringdist.match'.
+        numeric.match = c('dob_day', 'dob_month', 'dob_year'),
+        
+        # Specify the number of CPU cores to utilize (parallel processing). The default value is NULL.
+        n.cores = numCores, 
+        return.df = TRUE
+)
+```
+
+
+---
+
+## Evaluate results
+
+
+
+.pull-left[ 
+
+Last stage involves a manual review of the results
+ 
+ ]
+.pull-right[ 
+
+![](evaluation.png)
+]
+
+
+
+---
+
+## Iterate over multiple sources 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+source1_CARITASBOLIVIA_CARITASBOL  <- data.prep |> 
+  dplyr::filter(datasource=="CARITASBOLIVIA_CARITASBOL ") |> 
+  dplyr::select( - datasource)
+
+source2_FMK_DATOSCALLELAPAZELALTO <- data.prep |> 
+  dplyr::filter(datasource ==" FMK_DATOSCALLELAPAZELALTO")|> 
+  dplyr::select( - datasource)
+
+# source3_FUSB <- data.prep |>
+#   dplyr::filter(socio=="FUSB")|> 
+#   dplyr::select( - socio)
+
+``` 
+
+
+---
+
+## Questions
+
+Please [post here your questions](https://github.com/unhcr-americas/record_linkage/issues/new)
+
+## Reference: 
+
+
+[Fastlink Documentation](https://github.com/kosukeimai/fastLink)
+
+[Presentation from UN Stat Commission](https://www.youtube.com/watch?v=S7boX8X4uXU) - a practical example from DANE in Colombia - matching a survey - - Gran encuesta integrada de hogares (GEIH) - with a registry - Registro Estadístico de Relaciones Laborales (RELAB) - 
+
+
+
