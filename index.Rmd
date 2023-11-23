@@ -308,7 +308,7 @@ Each steps described above to be:
  
  * piped using the tidyverse approach
  
-Revise the[ demo script](https://github.com/unhcr-americas/record_linkage/blob/main/fastlink.R) and  [ applied real use case script](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.R)  to use the functions
+Revise the[demo script](FastLink.html) and  [ applied real use case script](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.R)  to use the functions
  
  ]
 .pull-right[ 
