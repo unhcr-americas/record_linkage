@@ -1,0 +1,260 @@
+# Clear the workspace by removing all objects
+rm(list = ls())
+
+# Load the pacman package if it is not already installed.
+# if (!requireNamespace("pacman", quietly = TRUE)) {
+#   install.packages("pacman")
+# }
+# 
+# pacman::p_load(
+#   dplyr,         # Data manipulation and transformation
+#   data.table,    # Fast data manipulation with data tables
+#   stringi,       # Character string processing
+#   lubridate,     # Date and time handling
+#   janitor,       # Data cleaning and tabulation functions
+#   parallel,      # Parallel computing
+#   fastLink,      # Record linkage and deduplication
+#   stringdist     # String distance computation
+# )
+
+# Get the number of detected cores minus 1
+# Reserve one core for non-computational tasks to help prevent system slowdowns or unresponsiveness
+numCores <- parallel::detectCores() - 1
+
+# Example data frames dfA and dfB
+# Replace these with your actual data frames
+
+
+#data(samplematch)
+
+dfA <- data.frame(
+  FIRST_NAME = c("John", "Mary", "Robert", "Michael", "Jennifer", "David", "Karen", "Maria", "Carlos", "James"),
+  LAST_NAME = c("Smith III", "Johnson!", "Williams123", "Brown", "Jones", "Davis", "Miller", "Garcia", "Martinez", "Andrson"),
+  BIRTH_DATE = c("1981-05-20", "1990-05-15", "1978-12-10", "1985-08-02", "1993-11-25", "1977-03-30", "1988-06-18", "1991-02-05", "1980-09-12", "1982-07-09"),
+  gender = c("M", "F", "M", "M", "F", "M", "F", "F", "M", "M")
+)
+
+dfB <- data.frame(
+  RecipientNameFirst = c("John", "Mary", "Robert", "Michael", "Jennifer", "David", "Karenn", "Carloas", "Mariaa", "James"),
+  RecipientNameLast = c("Smith iv", "Brown-", "Williams", "Jones", "John son", "No Name", "Miller", "Martinez", "Garcia", "Anderson"),
+  RecipientDateOfBirth = c("1981-05-21", "1992-09-25", "1978-10-12", "1985-08-02", "1993-11-25", "1977-03-30", "1988-06-18", "1980-09-12", "1991-02-05", "1982-07-09"),
+  gender = c("M", "F", "M", "M", "F", "M", "F", "M", "F", "M")
+)
+
+# # Example data frames dfA and dfB
+# dfA <- fread(file = 'dfA.csv',
+#              sep = ",",
+#              header = T,
+#              nThread = numCores)
+# 
+# dfB <- fread(file = 'dfB.csv',
+#              sep = ",",
+#              header = T,
+#              nThread = numCores)
+
+# Assign a unique key ID to each row
+dfA <- dfA |>
+ dplyr::mutate(row_idA = paste("dfA_", dplyr::row_number(), sep = ""))
+
+dfB <- dfB |>
+ dplyr::mutate(row_idB = paste("dfB_", dplyr::row_number(), sep = ""))
+
+# Convert the date column to a valid date format.
+dfA$BIRTH_DATE <- as.Date(dfA$BIRTH_DATE, format = "%Y-%m-%d")  # "%m/%d/%Y"
+dfB$RecipientDateOfBirth <- as.Date(dfB$RecipientDateOfBirth, format = "%Y-%m-%d")  # "%m/%d/%Y"
+# 
+# # Create new date variables by splitting date of birth into three different parts. 
+dfA <- dfA |> 
+       dplyr::mutate(dob_day = as.numeric(lubridate::day(BIRTH_DATE)),
+                      dob_month = as.numeric(lubridate::month(BIRTH_DATE)),
+                      dob_year = as.numeric(lubridate::year(BIRTH_DATE)),
+                      DOB=BIRTH_DATE)
+
+dfB <- dfB |> 
+       dplyr::mutate(dob_day = as.numeric(lubridate::day(RecipientDateOfBirth)),
+                      dob_month = as.numeric(lubridate::month(RecipientDateOfBirth)),
+                      dob_year = as.numeric(lubridate::year(RecipientDateOfBirth)),
+                      DOB=RecipientDateOfBirth)
+
+
+# Define a function for data cleaning with additional name removal logic
+clean_names <- function(names_column) {
+  # Step 0: Convert to uppercase
+  names_column_new <- toupper(names_column)
+  # Step 1: Remove specified name suffixes
+  toRemove <- c(" JR", " SR", " IV", " III", " II")
+  for (tR in toRemove) {
+    names_column_new <- gsub(tR, "", names_column_new)
+  }
+  # Step 2: Convert special characters to ASCII equivalents
+  names_column_new <- iconv(names_column_new, "latin1", "ASCII//TRANSLIT", sub = "")
+  # Step 3: Remove punctuation, digits, and all sapces
+  names_column_new <- gsub("[[:punct:][:digit:]][[:space:]]", "", names_column_new)
+  # Step 4: Create a new variable with only alphabetic characters
+  names_column_new <- gsub("[^[:alpha:]]", "", names_column_new)
+  return(names_column_new)
+}
+
+# Perform data cleaning on dfA using the clean_names function
+dfA <- dfA |>
+ dplyr::mutate_at(dplyr::vars(FIRST_NAME, LAST_NAME), list(new = clean_names)) |>
+ dplyr::mutate(FN = FIRST_NAME_new, LN = LAST_NAME_new)
+
+# Perform data cleaning on dfB using the clean_names function
+dfB <- dfB |>
+ dplyr::mutate_at(dplyr::vars(RecipientNameFirst, RecipientNameLast), list(new = clean_names)) |>
+ dplyr::mutate(FN = RecipientNameFirst_new, LN = RecipientNameLast_new)
+
+
+rm(clean_names)
+
+# # Create no name list
+NoNameList <- c(
+  "NICKNAME",
+  "NOFAMILYNAME",
+  "NOFIRSTNAME",
+  "NOLASTNAME",
+  "NOMIDDLENAME",
+  "NONAME",
+  "NO",
+  "UNKNOWN",
+  "UNK",
+  "UN",
+  "NA"
+)
+# 
+# # Blank out the names in the data if they match any of the strings in the NoNameList
+dfA <- dfA |>
+ dplyr::mutate(FN = dplyr::case_when(
+                              FN %in% NoNameList~ "",
+                              TRUE ~ FN),
+               LN = dplyr::case_when(
+                                LN %in% NoNameList ~ "",
+                                TRUE ~ LN))
+
+dfB <- dfB |>
+ dplyr::mutate(FN = dplyr::case_when(
+                              FN %in% NoNameList~ "",
+                              TRUE ~ FN),
+                LN = dplyr::case_when(
+                                LN %in% NoNameList ~ "",
+                                TRUE ~ LN))
+rm(NoNameList)
+
+# Delete rows that have missing First Name (FN), Last Name (LN), or Date of Birth (DOB).
+dfA <- dfA |>
+  dplyr::filter(!is.na(FN) & FN != "" & !is.na( LN) & LN != "" & !is.na(DOB) )
+
+dfB <- dfB |>
+  dplyr::filter(!is.na(FN) & FN != "" & !is.na( LN) & LN != "" & !is.na(DOB) )
+
+
+# Exact Matching 
+Exact <- merge(dfA, dfB, by=c("FN","LN","DOB", "gender")) 
+
+
+# Using the fastLink R package for record linkage
+matches.out <- fastLink::fastLink(
+                 dfA = dfA, dfB = dfB, 
+                 # Specify the vector of variable names to be used for matching.
+                 # These variable names should exist in both dfA and dfB
+                 varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year', 'gender'),
+                 # Specify which variables among varnames should be compared using string distance
+                 stringdist.match = c('FN', 'LN'),
+                 # Specify which variables present in  stringdist.match can be partially matched
+                 partial.match = c('FN', 'LN'),
+                 # Specify which variables should be matched numerically
+                 # Must be a subset of 'varnames' and must not be present in 'stringdist.match'.
+                 numeric.match = c('dob_day', 'dob_month', 'dob_year'),
+                 # Specify the number of CPU cores to utilize (parallel processing). The default value is NULL.
+                 n.cores = numCores, 
+                 return.all = TRUE,
+                 return.df = TRUE
+)
+
+# The output from fastLink() will be a list  that includes a matrix where each row
+# is a match with the relevant indices of dfA (column 1) and dfB (column 2).
+
+# Confusion Matrice
+fastLink::confusion(matches.out, threshold = 0.98)
+
+# Examine the EM object:
+matches.out$EM
+
+# Summarize the accuracy of the match:
+# each column gives the match count, match rate,
+# false discovery rate (FDR) and false negative rate (FNR)
+# under different cutoffs for matches based on the posterior 
+# probability of a match. 
+summary(matches.out)
+ 
+
+# Get fuzzy matches using the results from fastLink
+# A threshold of 0.98 is set for match classification
+fuzzy_matches <-  fastLink::getMatches(dfA, dfB, 
+                            fl.out = matches.out, 
+                            threshold.match = 0.98)
+fuzzy_matches #|> knitr::kable()
+
+blockdata_out <- fastLink::blockData(dfA, dfB, 
+        varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'),
+        # window blocking for numeric variables, where a given observation in dataset A
+        #will be compared to all observations in dataset B where the value of the blocking
+        #variable is within ±K of the value of the same variable in dataset A. 
+        #The value of K is the size of the window
+        # window.block = "birthyear", 
+        # window.size = 1,
+        #  using k-means clustering, so that similar values of string and numeric
+        # variables are blocked together. 
+        kmeans.block = "FN", 
+        nclusters = 2)
+
+
+## Aggregating Multiple Matches Together  ###
+
+#Often, we run several different matches for a single data set - 
+#for instance, when blocking by gender or by some other criterion to reduce the 
+#number of pairwise comparisons. Here, we walk through how to aggregate those 
+#multiple matches into a single summary. 
+blockgender_out <- fastLink::blockData(dfA, dfB, varnames = "gender")
+## Subset dfA into blocks
+dfA_block1 <- dfA[blockgender_out$block.1$dfA.inds,]
+dfA_block2 <- dfA[blockgender_out$block.2$dfA.inds,]
+
+## Subset dfB into blocks
+dfB_block1 <- dfB[blockgender_out$block.1$dfB.inds,]
+dfB_block2 <- dfB[blockgender_out$block.2$dfB.inds,]
+
+## Run fastLink on each
+fl_out_block1 <- fastLink::fastLink(
+  dfA_block1, dfB_block1,
+  varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'), 
+  n.cores = numCores
+)
+fl_out_block2 <- fastLink::fastLink(
+  dfA_block2, dfB_block2,
+  varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'), 
+  n.cores = numCores
+)
+
+#Here, we run fastLink() on the subsets of data defined by blocking on gender in the previous section:
+  
+## Run fastLink on each
+link.1 <- fastLink::fastLink(
+    dfA_block1, dfB_block1,
+    varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'), 
+    n.cores = numCores
+  )
+
+link.2 <- fastLink::fastLink(
+  dfA_block2, dfB_block2,
+  varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'), 
+  n.cores = numCores
+)
+
+#To aggregate the two matches into a single summary, we use the aggregateEM() function as follows:
+agg.out <- fastLink::aggregateEM(em.list = list(link.1, link.2))
+
+summary(agg.out )
+
+

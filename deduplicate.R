@@ -15,32 +15,175 @@ data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
 
 ## Cleaning functions ###############
 
-#' separate_name
+
+#' clean_age
 #' 
-#' use the name pattern to separate the name
-#' in case family name is more than one word, 
-#'  identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
-#' @param fullname full name including everything together
-#' @param namepattern either "firstname_fathername_mother_name" or "fathername_mothername_firstname
-#' @return a list with c("firstname","fathername","mothername")
+#' This functions cleans the age identifiers in the context of record linkage.
+#' 
+#' If the date of birth is present, it will parse it, extract year and month, 
+#' and recalculate both age and age range
+#' 
+#' If the date of birth is not mentioned, then it will use age and date_record
+#' to reconstruct an estimated date of birth - and recalculate the rest
+#' 
+#' @param frame frame with the data
+#' @param date_birth variable name for the date of birth in the frame
+#' @param date_record variable name for the date of birth in the frame
+#' @param year_birth variable name for the year of birth in the frame
+#' @param month_birth variable name for the month of birth in the frame
+#' @param age variable name for the date of birth in the frame
+#' @param age_range variable name for the date of birth in the frame
+#' 
+#' @return the same column but cleaned... 
 #' 
 #' @export
-separate_fullname <- function(fullname, namepattern){
+clean_age <- function(frame, 
+                      date_birth, 
+                      date_record, 
+                      year_birth, 
+                      month_birth, 
+                      age, 
+                      age_range){
   
-  # ### 
-  # sp <- tidyr::separate(fullname, " ")
-  # 
-  # return(sp)
+  frame2 <- frame |>
+  dplyr::mutate(
+     DateOfBirth = lubridate::as_date(DoB),
+    
+    dob_day = as.numeric(
+      lubridate::day(DateOfBirth)),
+    
+    dob_month = as.numeric(
+      lubridate::month(DateOfBirth)),
+    
+    dob_year = as.numeric( 
+      lubridate::year(DateOfBirth)),
+      
+    age = today(),     
+        
+    age_cohort = dplyr::case_when(
+          ~ "0-4",
+          ~ "4-11",
+          ~ "12-17",
+          ~ "18-59",
+          ~ "60+",
+          TRUE ~  NA  )   )
+    
+    return(frame2)
 }
 
 
-test <- data |> 
-  dplyr::filter(  is.na(nombres) ) |> 
-  dplyr::select(nombre_completo, name_pattern)  
 
-fullname <- test$nombre_completo
-namepattern <- test$name_pattern
-sep <- separate_fullname(fullname, namepattern)
+#' separate_fullname  
+#' 
+#' This function clean name decomposition - in case it is not included in the original data
+#' 
+#' Performing this name decomposition is important in order to enhance record linkage
+#' as the name pattern can be different (either "firstname_fathername_mother_name" or
+#'  "fathername_mothername_firstname") which will minimise linkage probabibility
+#' 
+#' In case, there's only 2 elements, it will fill only firstname and fathername
+#' The function also identify family prefix to be bind such as for spanish 
+#' "DEL", 'DE", "DE LOS", "DE LAS"
+#' 
+#' @param fullname full name including everything together
+#' @param firstname full name including everything together
+#' @param fathername full name including everything together
+#' @param mothername full name including everything together
+#' @param namepattern either "firstname_fathername_mother_name" or
+#'                         "fathername_mothername_firstname"
+#' @param  nameprefix  default vector with stuff to remove from name
+#'                    c("DE ", "DE LA ", "DEL ", "DE LOS ", "DE LAS")
+#' @return a clean list with c("firstname","fathername","mothername")
+#' 
+#' @export
+separate_fullname <- function(frame, 
+                              fullname, 
+                              firstname,
+                              fathername,
+                              mothername,
+                              namepattern,
+                              nameprefix = data.frame(
+                                pat1 = c( "DE LA ", "DEL ", "DE LOS ", "DE LAS ","DE "),
+                                pat2 = c( "DE_LA_", "DEL_", "DE_LOS_", "DE_LAS_", "DE_")  ) 
+                              ){
+  
+  
+  # Utility sub-function to remove spaces based on patterns
+  remove_spaces_based_on_patterns <- function(vector, nameprefix) {
+    for (i in  1:nrow(nameprefix) ) {
+      # i <- 4
+      #cat(paste0(nameprefix[i, c("pat1")],"\n",  vector, "\n"))
+      vector <- stringr::str_replace_all(string = vector, 
+                                         pattern =  nameprefix[i, c("pat1")], 
+                                         replacement = nameprefix[i, c("pat2")])
+      # cat(paste0(vector, "\n"))
+    }
+    return(vector)
+  }
+  ## Test function
+  #remove_spaces_based_on_patterns(vector = "ADRIENNE DE LOS ANGELES MILANESE PARISIANNA", nameprefix)
+  
+  # Utility sub-function to remove spaces based on patterns
+  reset_spaces_based_on_patterns <- function(vector, nameprefix) {
+    for (i in  1:nrow(nameprefix) ) {
+      # i <- 1
+     # cat(paste0( nameprefix[i, c("pat1")],"\n",vector,  "\n"))
+      vector <- stringr::str_replace_all(string = vector, 
+                                         pattern =  nameprefix[i, c("pat2")], 
+                                         replacement = nameprefix[i, c("pat1")])
+      #cat(paste0(vector, "\n"))
+    }
+    return(vector)
+  }
+  
+  ## Let's go!  
+  framesp <- frame |>
+    ###  Lets get everything to uper
+    dplyr::mutate( fullname_or = fullname, 
+                   fullname = trimws(stringr::str_squish(fullname), 
+                                        which = "both", 
+                                        whitespace = "[ \t\r\n]"),
+                   fullname = toupper(fullname)) |>
+    ###  Lets apply the prefix space replacement...
+    dplyr::mutate( fullname_pref = remove_spaces_based_on_patterns(vector = fullname,
+                                                              nameprefix),
+                   fullname = fullname_pref ) |>
+    
+  #  "firstname_fathername_mother_name" or
+  #'                         "fathername_mothername_firstname"
+    tidyr::separate_wider_delim(fullname,
+                                delim = " ", 
+                                 names_sep = "", 
+                                 too_few = "align_start") |>
+    
+    ### Now reconstruct the first name, father and mother name based on cases
+    
+    
+    
+    tidyr::separate( fullname, 
+                     #into=c("FirstName", "FatherName", "MotherName"), 
+                     sep=" ")  |>
+    ###  Lets reset the prefix space replacement...
+    dplyr::mutate( FatherName = reset_spaces_based_on_patterns(vector = FatherName,
+                                                              nameprefix),
+                   MotherName = reset_spaces_based_on_patterns(vector = MotherName,
+                                                               nameprefix))
+    
+  # 
+  return(framesp)
+}
+
+## Testing...
+frame <- data |> 
+  dplyr::filter(  is.na(nombres) ) |> 
+  dplyr::select(nombre_completo, name_pattern)  |>
+  dplyr::rename( fullname= "nombre_completo",
+                  namepattern = "name_pattern")
+
+ 
+sep <- separate_fullname(frame = frame,
+                         fullname = "fullname", 
+                         namepattern= "namepattern")
 
 #' cleanvar
 #' 
@@ -53,7 +196,7 @@ sep <- separate_fullname(fullname, namepattern)
 #' 
 #' @export
 cleanvar <- function(names_column,
-                     toRemove = c(" JR", " SR", " IV", " III", " II")) {
+                     toRemove = c(" JR", " JUNIOR", " SR", " IV", " III", " II")) {
   #  Convert to uppercase
   names_column_new <- toupper(names_column)
   # Remove specified name suffixes
@@ -71,13 +214,14 @@ cleanvar <- function(names_column,
 }
 
 
-## FGet the data post processing #####################
+## Pipeline for data post processing #####################
 data.prep <- data |>
   
   ## Filter where the phone number is not available -- "NO REFIERE"
   dplyr::filter( telefono != "NO REFIERE") |>
   
   ## Clean age_range
+  data |> dplyr::select(age_range) |> dplyr::distinct() |> dplyr::pull()
   # dplyr::mutate( age_range = dplyr::case_when(
   #   !(is.null(edad)) & (edad <5 ) ~ "0-4",
   #   genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
@@ -133,6 +277,9 @@ alldatasource <- data.prep |>
                  dplyr::distinct() |> 
                  dplyr::pull()
 
+
+
+
 ## Let's get 2 comparison dataset... ##########
 dfA  <- data.prep |> 
   dplyr::filter(datasource == alldatasource[9]) |> 
@@ -169,8 +316,9 @@ matches.out <- fastLink::fastLink(
   n.cores = parallel::detectCores() - 1,
   return.df = TRUE)
 
-
-
+## Review the matching in each orginal frame
+matchedA <- dfA[matches.out$matches$inds.a, ]
+matchedB <- dfB[matches.out$matches$inds.b, ]
 
 # Confusion Matrice
 fastLink::confusion(matches.out, threshold = 0.98)
@@ -193,30 +341,28 @@ matched_dfs <- fastLink::getMatches(
   threshold.match = 0.85
 )
 
+# Display the matches ###################
+# convert dfA rownames to a column 
+dfA_clean <- dfA %>% rownames_to_column()
 
-# convert cases rownames to a column 
-cases_clean <- cases %>% rownames_to_column()
-
-# convert test_results rownames to a column
-results_clean <- results %>% rownames_to_column()  
+# convert dfB rownames to a column
+dfB_clean <- dfB %>% rownames_to_column()  
 
 # convert all columns in matches dataset to character, 
 #so they can be joined to the rownames
-matches_clean <- my_matches %>%
+matches_clean <- matched_dfs %>%
   mutate(across(everything(), as.character))
-
-
 
 # Join matches to dfA, then add dfB
 # column "inds.b" is added to dfA
-complete <- left_join(cases_clean, matches_clean, by = c("rowname" = "inds.a"))
+complete <- left_join(dfA_clean, matches_clean, by = c("rowname" = "inds.a"))
 
 # column(s) from dfB are added 
-complete <- left_join(complete, results_clean, by = c("inds.b" = "rowname"))
+complete <- left_join(complete, dfB_clean, by = c("inds.b" = "rowname"))
 
 
 
-#P reprocessing Matches via Blocking #################
+# Preprocessing Matches via Blocking #################
 
 blockgender_out <- fastLink::blockData(dfA, dfB, varnames = "gender")
 
@@ -287,3 +433,5 @@ link.2 <- fastLink::fastLink(
 agg.out <- fastLink::aggregateEM(em.list = list(link.1, link.2))
 
 
+
+# Preprocessing Matches via Blocking #################

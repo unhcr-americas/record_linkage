@@ -55,7 +55,7 @@ Performing exact matching is often not do-able when reconciling registration lis
 
 .pull-left[  
 
-What needs to be fixed... 
+Can be numerous ones: ... 
 
 * Spelling of names and first names can be different
 
@@ -212,17 +212,50 @@ for (tR in toRemove) {
 ```
 ]
 
+
 ---
 
-## Pre-processing: Date
+## Pre-processing: name Decomposition
+
 
 .pull-left[  
 
+From Full name to First name, Father and Mother name 
+
+This function clean name decomposition - in case it is not included in the original data
+
+Performing this name decomposition is important in order to enhance record linkage as the name pattern can be different (either "firstname_fathername_mother_name" or "fathername_mothername_firstname") which will minimise linkage probabibility
+
+In case, there's only 2 elements, it will fill only firstname and fathername
+
+The function will clean all unexpected spaces within the names, including double spaces 
+
+The function also identify family prefix to be bind such as for Spanish  "DEL", 'DE", "DE LOS", "DE LAS"
 
 
-Turn Date of Birth to Year-Month and Age
+]
+.pull-right[ 
 
-Turn Age to Age Cohort
+```
+
+
+
+```
+]
+
+
+
+---
+
+## Pre-processing: Age & Date of Birth
+
+.pull-left[  
+
+Creating a dedicated function....
+
+If the date of birth is present, it will parse it, extract year and month, and recalculate both age and age range
+ 
+If the date of birth is not mentioned, then it will use age and date_record to reconstruct an estimated date of birth - and recalculate the rest
 
 ]
 .pull-right[ 
@@ -245,40 +278,19 @@ dplyr::mutate(
   age = today()-     
   
   age_cohort = dplyr::case_when(
-    genero %in% c("F" ,"FEMENINO" ,
-                   "f",  "Femenino") ~ "F",
-                   
-    genero %in% c("M" , "MASCULINO" , 
-                   "Masculino") ~ "M",
-                   
-    genero %in% c("X",  "Otro") ~ "Ot",
+      ~ "0-4",
+       ~ "4-11",
+       ~ "12-17",
+       ~ "18-59",
+       ~ "60+",
     TRUE ~  NA  )   )
     
 ```
 ]
 
+ 
 
----
-
-## Pre-processing: Separate name 
-
-
-.pull-left[  
-
-Use the name pattern to separate the name
-
- in case family name is more than one word, 
-
-identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
-]
-.pull-right[ 
-
-```
-
-
-
-```
-]
+  
 
 
  
@@ -296,144 +308,13 @@ Each steps described above to be:
  
  * piped using the tidyverse approach
  
- [Revise this presentation notebook to use the functions]()
+Revise the[ demo script](https://github.com/unhcr-americas/record_linkage/blob/main/fastlink.R) and  [ applied real use case script](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.R)  to use the functions
  
  ]
 .pull-right[ 
 
 ![](pipe.png)
 ]
- 
-
-```{r function-separate_fullname, include=FALSE}
-#' separate_name
-#' 
-#' use the name pattern to separate the name
-#' in case family name is more than one word, 
-#'  identify family prefix to bind with  such as "DEL", 'DE", "DE LOS", "DE LAS"
-#' @param fullname full name including everything together
-#' @param namepattern either "firstname_fathername_mother_name" or "fathername_mothername_firstname
-#' @return a list with c("firstname","fathername","mothername")
-#' 
-#' @export
-separate_fullname <- function(fullname, namepattern){
-    
-  # ### 
-  # sp <- tidyr::separate(fullname, " ")
-  # 
-  # return(sp)
-}
-
-test <- data |> 
-        dplyr::filter(  is.na(nombres) ) |> 
-        dplyr::select(nombre_completo, name_pattern)  
-
-fullname <- test$nombre_completo
-namepattern <- test$name_pattern
-sep <- separate_fullname(fullname, namepattern)
-
-# data |> dplyr::select(  name_pattern) |> dplyr::distinct() |> dplyr::pull()
-
-```
- 
- 
-    
-```{r function-cleanvar, include=FALSE}
-#' cleanvar
-#' 
-#' function for data cleaning with additional name removal logic
-#' 
-#' @param names_column name of the column to treat
-#' @param  toRemove  default vector with stuff to remove from name
-#'                    c(" JR", " SR", " IV", " III", " II")
-#' @return  names_column_new name of the column treat
-#' 
-#' @export
-cleanvar <- function(names_column,
-                      toRemove = c(" JR", " SR", " IV", " III", " II")) {
-  #  Convert to uppercase
-  names_column_new <- toupper(names_column)
-  # Remove specified name suffixes
-  for (tR in toRemove) {
-    names_column_new <- gsub(tR, "", names_column_new)
-  }
-  # Convert special characters to ASCII equivalents
-  names_column_new <- iconv(names_column_new, "latin1", "ASCII//TRANSLIT", sub = "")
-  # Remove punctuation, digits, and all spaces
-  names_column_new <- gsub("[[:punct:][:digit:]][[:space:]]", "", names_column_new)
-  # Create a new variable with only alphabetic characters
-  names_column_new <- gsub("[^[:alpha:]]", "", names_column_new)
-  
-  return(names_column_new)
-}
-
-```
-
-
-
-  
-```{r example-cleanvar, include=FALSE}
-## Filter the right nationality
-data.prep <- data |>
-  
-  ## Filter where the phone number is not available -- "NO REFIERE"
-  dplyr::filter( telefono != "NO REFIERE") |>
-  
-  ## Clean age_range
-  # dplyr::mutate( age_range = dplyr::case_when(
-  #   !(is.null(edad)) & (edad <5 ) ~ "0-4",
-  #   genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
-  #   genero %in% c("X",  "Otro") ~ "Ot",
-  #   TRUE ~  age_range  )) |>
-  
-  ## Clean the gender variable
-  # data |> dplyr::select(genero) |> dplyr::distinct() |> dplyr::pull()
-  dplyr::mutate(gender = dplyr::case_when(
-    genero %in% c("F" ,"FEMENINO" ,"f",  "Femenino") ~ "F",
-    genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
-    genero %in% c("X",  "Otro") ~ "Ot",
-    TRUE ~  NA  )) |>
-  
-  ## Only retain the nationality of interest
-  # data |> dplyr::select(nacionalidad) |> dplyr::distinct() |> dplyr::pull()
-  dplyr::mutate(nationality = dplyr::case_when(
-    nacionalidad %in% c("Venzuela", "venezuela",  "Venezolana", 
-                                     "VENEZUELA",
-                                     "Venezuela", "VENEZOLANO", "VENEZOLANA") ~ "VEN",
-    nacionalidad %in% c("COLOMBIANO", "COLOMBIANA", "COLOMBIA",
-                                    "colombia", "Colombia", "Nac. Colombia",
-                                    "Colombiana" ) ~ "COL",
-    TRUE ~ "other"  )) |>
-  dplyr::filter( nationality %in% c("VEN", "COL" ))
-```
-
-
-```{r example-cleanvar2, include=FALSE}
-data.prep <- data.prep |>
-  ## Apply cleanvar()
-  # Perform data cleaning on dfA using the clean_names function
-  dplyr::mutate_at( dplyr::vars(nombres, apellido_paterno, apellido_materno,
-                                asistencia, departamento, telefono,
-                                planilla, socio), 
-                   list(new = cleanvar))  |>
-  
-  
-  ### identify single data source
-  dplyr::mutate(datasource = paste0(socio_new, "_", planilla_new)) |>
-  
-  # ## Retain only fields for record linkage
-  dplyr::select(datasource, nationality, nombres_new, apellido_paterno_new,
-                   apellido_materno_new, asistencia_new, departamento_new,
-                   telefono_new, gender)
-  
-# table(data.prep$gender, useNA = "ifany") 
-# table(data.prep$nationality, useNA = "ifany") 
-# table(data.prep$datasource, useNA = "ifany")
-# ## See if can use departamento for blocking
-# table(data.prep$datasource, data.prep$departamento_new, useNA = "ifany")
-#dput(names(data.prep)) 
-```
-  
  
 
 ---
@@ -473,13 +354,13 @@ matches.out <- fastLink::fastLink(
                  
          # Specify the vector of variable names to be used for matching.
          # These variable names should exist in both dfA and dfB
-         varnames = c('FN', 'LN', 'dob_day', 'dob_month', 'dob_year'),
+         varnames = c('FirstName', 'LastName', 'dob_day', 'dob_month', 'dob_year'),
         
         # Specify which variables among varnames should be compared using string distance
-        stringdist.match = c('FN', 'LN'),
+        stringdist.match = c('FirstName', 'LastName'),
         
         # Specify which variables present in  stringdist.match can be partially matched
-        partial.match = c('FN', 'LN'),
+        partial.match = c('FirstName', 'LastName'),
         
         # Specify which variables should be matched numerically
         # Must be a subset of 'varnames' and must not be present in 'stringdist.match'.
@@ -493,6 +374,17 @@ matches.out <- fastLink::fastLink(
 ```
 ???
 The default threshold for matches is 0.94 (threshold.match =) but you can adjust it higher or lower. If you define the threshold, consider that higher thresholds could yield more false-negatives (rows that do not match which actually should match) and likewise a lower threshold could yield more false-positive matches.
+
+---
+
+## Results on dummy data 
+
+```{r}
+#source("fastlink.R")
+ 
+```
+
+
 
 ---
 
