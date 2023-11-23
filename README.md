@@ -25,6 +25,8 @@ The process of record linkage typically involves several steps:
  
  In this [presentation](https://unhcr-americas.github.io/record_linkage/), we focus on  [Fastlink](https://github.com/kosukeimai/fastLink) which was also highlighted in this [presentation from UN Stat Commission](https://www.youtube.com/watch?v=S7boX8X4uXU) - a practical example from DANE in Colombia - matching a survey - - Gran encuesta integrada de hogares (GEIH) - with a registry - Registro Estadístico de Relaciones Laborales (RELAB) - 
  
- You can also check the [record-linkage-tutorial](https://github.com/cleanzr/record-linkage-tutorial)
+ You can check a full [demo here](https://unhcr-americas.github.io/record_linkage/FastLink.html)
+ 
+ You can also check the [Seminar on record linkage](https://github.com/cleanzr/record-linkage-tutorial)
 
 

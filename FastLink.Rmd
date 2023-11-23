@@ -331,9 +331,9 @@ agg.out <- fastLink::aggregateEM(em.list = list(link.1, link.2))
 
 summary(agg.out )
 
-fuzzy_matches2 <-  fastLink::getMatches(dfA, dfB, 
-                            fl.out = agg.out, 
-                            threshold.match = 0.98)
+# fuzzy_matches2 <-  fastLink::getMatches(dfA, dfB, 
+#                             fl.out = agg.out, 
+#                             threshold.match = 0.98)
 # dput(names(fuzzy_matches2))
 # ## Display nicely...
 # fuzzy_matches2 |> 

@@ -3,16 +3,25 @@
 ##################################################
 
 library(tidyverse)
-library(unhcrthemes)
-library(fontawesome)
 # install.packages("fastLink")
 library(fastLink)  
 
 ## Load the data - 
 # which is here already the results of merging multiple list from different excel files
 data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
-                           sheet = "Sheet1") |> janitor::clean_names()
+                           sheet = "Sheet1", 
+                           col_types = c("numeric", 
+                             "text", "text", "text", "text", "text", 
+                             "text", "text", "date", "numeric", 
+                             "numeric", "numeric", "text", "text", 
+                            "text", "text", "text", "text", "text", 
+                            "text", "text", "text", "text", "text", 
+                            "text", "text", "text", "text", "text", 
+                            "text", "text")) |> 
+     janitor::clean_names()
 
+
+dput(names(data))
 ## Cleaning functions ###############
 
 
@@ -42,34 +51,88 @@ clean_age <- function(frame,
                       date_record, 
                       year_birth, 
                       month_birth, 
+                      day_birth, 
                       age, 
                       age_range){
   
+  #frame$date_birth
   frame2 <- frame |>
-  dplyr::mutate(
-     DateOfBirth = lubridate::as_date(DoB),
-    
-    dob_day = as.numeric(
-      lubridate::day(DateOfBirth)),
-    
-    dob_month = as.numeric(
-      lubridate::month(DateOfBirth)),
-    
-    dob_year = as.numeric( 
-      lubridate::year(DateOfBirth)),
-      
-    age = today(),     
+     dplyr::mutate(
+       ## In case there is no date of birth - but we have an age, we recalculate it..
+       
+       date_birth =     dplyr::case_when(
+         # Case we age but no DOB and date registration  
+         is.na(date_birth) & !(is.na(age)) & !(is.na(date_record))  ~
+           lubridate::as_date(date_record) - lubridate::dyears(age) ,
+         
+         # Case we age but no DOB and date registration  
+         is.na(date_birth) & !(is.na(age)) & is.na(date_record) ~
+           today() - lubridate::dyears(age) ,  
+         
+         # Case take what we have...  
+         TRUE ~   lubridate::as_date(date_birth) ) ,
+       ## make sure it is in the correct format
+       date_birth =  lubridate::as_date(date_birth),
         
-    age_cohort = dplyr::case_when(
-          ~ "0-4",
-          ~ "4-11",
-          ~ "12-17",
-          ~ "18-59",
-          ~ "60+",
+         day_birth = as.numeric(
+          lubridate::day(date_birth)),
+        
+         month_birth = as.numeric(
+          lubridate::month(date_birth)),
+        
+         year_birth= as.numeric( 
+          lubridate::year(date_birth)),
+          
+        age = round( as.numeric(today() - date_birth) / 365),     
+            
+        age_cohort = dplyr::case_when(
+          age  <5    ~ "0-4",
+          age >=5 & age <= 11   ~ "4-11",
+          age >= 12 & age <= 17     ~ "12-17",
+          age >= 18 & age <= 59     ~ "18-59",
+          age >= 60     ~ "60+",
           TRUE ~  NA  )   )
     
     return(frame2)
 }
+
+
+## Testing...
+frame <- data |>  
+  dplyr::select(fecha_de_nacimiento, 
+                date_record, edad,  age_range)  |>
+  dplyr::rename( age = "edad",
+                 date_birth = "fecha_de_nacimiento") |>
+  dplyr::mutate( age1 = age, date_birth1 = date_birth)
+
+frame3 <- frame |> 
+  dplyr::mutate(
+    
+    test =   today() - lubridate::dyears(age),
+  ## In case there is no date of birth - but we have an age, we recalculate it..
+  
+  date_birth =     dplyr::case_when(
+    # Case we age but no DOB and date registration  
+     is.na(date_birth) & !(is.na(age)) & !(is.na(date_record))  ~
+                    lubridate::as_date(date_record) - lubridate::dyears(age) ,
+    
+    # Case we age but no DOB and date registration  
+    is.na(date_birth) & !(is.na(age)) & is.na(date_record) ~
+                    today() - lubridate::dyears(age) ,  
+    
+    # Case take what we have...  
+    TRUE ~   lubridate::as_date(date_birth) ))
+  
+
+#frame$date_birth
+
+sep <- separate_fullname(frame = frame, 
+                         date_birth, 
+                         date_record, 
+                         year_birth, 
+                         month_birth, 
+                         age, 
+                         age_range)
 
 
 
