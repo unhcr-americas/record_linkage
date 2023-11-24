@@ -21,7 +21,7 @@ data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
      janitor::clean_names()
 
 
-dput(names(data))
+#dput(names(data))
 ## Cleaning functions ###############
 
 
@@ -38,8 +38,6 @@ dput(names(data))
 #' @param frame frame with the data
 #' @param date_birth variable name for the date of birth in the frame
 #' @param date_record variable name for the date of birth in the frame
-#' @param year_birth variable name for the year of birth in the frame
-#' @param month_birth variable name for the month of birth in the frame
 #' @param age variable name for the date of birth in the frame
 #' @param age_range variable name for the date of birth in the frame
 #' 
@@ -49,14 +47,16 @@ dput(names(data))
 clean_age <- function(frame, 
                       date_birth, 
                       date_record, 
-                      year_birth, 
-                      month_birth, 
-                      day_birth, 
                       age, 
                       age_range){
   
   #frame$date_birth
   frame2 <- frame |>
+    ## Rename variable
+     dplyr::rename( date_birth = paste0(date_birth),
+                    date_record = paste0(date_record),
+                    age = paste0(age),
+                    age_range = paste0(age_range) ) |>
      dplyr::mutate(
        ## In case there is no date of birth - but we have an age, we recalculate it..
        
@@ -85,54 +85,90 @@ clean_age <- function(frame,
           
         age = round( as.numeric(today() - date_birth) / 365),     
             
-        age_cohort = dplyr::case_when(
-          age  <5    ~ "0-4",
-          age >=5 & age <= 11   ~ "4-11",
-          age >= 12 & age <= 17     ~ "12-17",
-          age >= 18 & age <= 59     ~ "18-59",
-          age >= 60     ~ "60+",
-          TRUE ~  NA  )   )
+        age_range = dplyr::case_when(
+          ## if age cohort was already present and we have no DOb, retain it
+         # !(is.na(age_range )) & is.na( date_birth) &
+            age  <5    ~ "0-4",
+          
+         # !(is.na(age_range )) & is.na( date_birth) & 
+            age >=5 & age <= 11   ~ "4-11",
+          
+          #!(is.na(age_range )) & is.na( date_birth) & 
+            age >= 12 & age <= 17     ~ "12-17",
+         # !(is.na(age_range )) & is.na( date_birth) & 
+            age >= 18 & age <= 59     ~ "18-59",
+          
+         # !(is.na(age_range )) & is.na( date_birth) &
+            age >= 60     ~ "60+",
+          
+          TRUE ~  age_range   )   )
     
     return(frame2)
 }
 
 
 ## Testing...
-frame <- data |>  
-  dplyr::select(fecha_de_nacimiento, 
-                date_record, edad,  age_range)  |>
-  dplyr::rename( age = "edad",
-                 date_birth = "fecha_de_nacimiento") |>
-  dplyr::mutate( age1 = age, date_birth1 = date_birth)
+# frame <- data |>  
+#   dplyr::select(fecha_de_nacimiento, 
+#                 date_record, edad,  age_range)  |>
+#   clean_age( date_birth = "fecha_de_nacimiento", 
+#              date_record = "date_record", 
+#              age = "edad", 
+#              age_range = "age_range")
 
-frame3 <- frame |> 
-  dplyr::mutate(
-    
-    test =   today() - lubridate::dyears(age),
-  ## In case there is no date of birth - but we have an age, we recalculate it..
-  
-  date_birth =     dplyr::case_when(
-    # Case we age but no DOB and date registration  
-     is.na(date_birth) & !(is.na(age)) & !(is.na(date_record))  ~
-                    lubridate::as_date(date_record) - lubridate::dyears(age) ,
-    
-    # Case we age but no DOB and date registration  
-    is.na(date_birth) & !(is.na(age)) & is.na(date_record) ~
-                    today() - lubridate::dyears(age) ,  
-    
-    # Case take what we have...  
-    TRUE ~   lubridate::as_date(date_birth) ))
-  
 
-#frame$date_birth
 
-sep <- separate_fullname(frame = frame, 
-                         date_birth, 
-                         date_record, 
-                         year_birth, 
-                         month_birth, 
-                         age, 
-                         age_range)
+#' remove_spaces_based_on_patterns 
+#' Utility sub-function to remove spaces based on patterns
+#' This function helps cleaning name decomposition - in case it is not included in the original data
+#' 
+#' In case, there's only 2 elements, it will fill only firstname and fathername
+#' The function also identify family prefix to be bind such as for spanish 
+#' "DEL", 'DE", "DE LOS", "DE LAS"
+#' 
+#' @param vector a list of string with names
+remove_spaces_based_on_patterns <- function(vector,
+                                            nameprefix = data.frame(
+                                              pat1 = c( "DE LA ", "DEL ", "DE LOS ", "DE LAS ","DE "),
+                                              pat2 = c( "DE_LA_", "DEL_", "DE_LOS_", "DE_LAS_", "DE_")  ) ) {
+  for (i in  1:nrow(nameprefix) ) {
+    # i <- 4
+    #cat(paste0(nameprefix[i, c("pat1")],"\n",  vector, "\n"))
+    vector <- stringr::str_replace_all(string = vector, 
+                                       pattern =  nameprefix[i, c("pat1")], 
+                                       replacement = nameprefix[i, c("pat2")])
+    # cat(paste0(vector, "\n"))
+  }
+  return(vector)
+}
+## Test function
+remove_spaces_based_on_patterns(vector = "ADRIENNE DE LOS ANGELES MILANESE PARISIANNA")
+
+ 
+#' reset_spaces_based_on_patterns 
+#' Utility sub-function to remove spaces based on patterns
+#' This function helps cleaning name decomposition - in case it is not included in the original data
+#' 
+#' In case, there's only 2 elements, it will fill only firstname and fathername
+#' The function also identify family prefix to be bind such as for spanish 
+#' "DEL", 'DE", "DE LOS", "DE LAS"
+#' 
+#' @param vector a list of string with names
+reset_spaces_based_on_patterns <- function(vector, 
+                                           nameprefix = data.frame(
+                                             pat1 = c( "DE LA ", "DEL ", "DE LOS ", "DE LAS ","DE "),
+                                             pat2 = c( "DE_LA_", "DEL_", "DE_LOS_", "DE_LAS_", "DE_")  ) ) {
+  for (i in  1:nrow(nameprefix) ) {
+    # i <- 1
+    # cat(paste0( nameprefix[i, c("pat1")],"\n",vector,  "\n"))
+    vector <- stringr::str_replace_all(string = vector, 
+                                       pattern =  nameprefix[i, c("pat2")], 
+                                       replacement = nameprefix[i, c("pat1")])
+    #cat(paste0(vector, "\n"))
+  }
+  return(vector)
+}
+
 
 
 
@@ -149,13 +185,12 @@ sep <- separate_fullname(frame = frame,
 #' "DEL", 'DE", "DE LOS", "DE LAS"
 #' 
 #' @param fullname full name including everything together
-#' @param firstname full name including everything together
-#' @param fathername full name including everything together
-#' @param mothername full name including everything together
+#' @param firstname first name
+#' @param fathername father name  
+#' @param mothername mother name 
 #' @param namepattern either "firstname_fathername_mother_name" or
 #'                         "fathername_mothername_firstname"
-#' @param  nameprefix  default vector with stuff to remove from name
-#'                    c("DE ", "DE LA ", "DEL ", "DE LOS ", "DE LAS")
+#'                         
 #' @return a clean list with c("firstname","fathername","mothername")
 #' 
 #' @export
@@ -164,56 +199,28 @@ separate_fullname <- function(frame,
                               firstname,
                               fathername,
                               mothername,
-                              namepattern,
-                              nameprefix = data.frame(
-                                pat1 = c( "DE LA ", "DEL ", "DE LOS ", "DE LAS ","DE "),
-                                pat2 = c( "DE_LA_", "DEL_", "DE_LOS_", "DE_LAS_", "DE_")  ) 
+                              namepattern
                               ){
-  
-  
-  # Utility sub-function to remove spaces based on patterns
-  remove_spaces_based_on_patterns <- function(vector, nameprefix) {
-    for (i in  1:nrow(nameprefix) ) {
-      # i <- 4
-      #cat(paste0(nameprefix[i, c("pat1")],"\n",  vector, "\n"))
-      vector <- stringr::str_replace_all(string = vector, 
-                                         pattern =  nameprefix[i, c("pat1")], 
-                                         replacement = nameprefix[i, c("pat2")])
-      # cat(paste0(vector, "\n"))
-    }
-    return(vector)
-  }
-  ## Test function
-  #remove_spaces_based_on_patterns(vector = "ADRIENNE DE LOS ANGELES MILANESE PARISIANNA", nameprefix)
-  
-  # Utility sub-function to remove spaces based on patterns
-  reset_spaces_based_on_patterns <- function(vector, nameprefix) {
-    for (i in  1:nrow(nameprefix) ) {
-      # i <- 1
-     # cat(paste0( nameprefix[i, c("pat1")],"\n",vector,  "\n"))
-      vector <- stringr::str_replace_all(string = vector, 
-                                         pattern =  nameprefix[i, c("pat2")], 
-                                         replacement = nameprefix[i, c("pat1")])
-      #cat(paste0(vector, "\n"))
-    }
-    return(vector)
-  }
-  
   ## Let's go!  
   framesp <- frame |>
-    ###  Lets get everything to uper
+    ## Rename variable
+    dplyr::rename( fullname = paste0(fullname),
+                   firstname = paste0(firstname),
+                   fathername = paste0(fathername),
+                   mothername = paste0(mothername),
+                   namepattern = paste0(namepattern) ) |>
+    
+    ###  Lets clean all spaces and get everything to upper
     dplyr::mutate( fullname_or = fullname, 
                    fullname = trimws(stringr::str_squish(fullname), 
                                         which = "both", 
                                         whitespace = "[ \t\r\n]"),
                    fullname = toupper(fullname)) |>
     ###  Lets apply the prefix space replacement...
-    dplyr::mutate( fullname_pref = remove_spaces_based_on_patterns(vector = fullname,
-                                                              nameprefix),
+    dplyr::mutate( fullname_pref = remove_spaces_based_on_patterns(vector = fullname),
                    fullname = fullname_pref ) |>
-    
-  #  "firstname_fathername_mother_name" or
-  #'                         "fathername_mothername_firstname"
+    ## Counting th enumber of space to understand the structure of the full name
+     dplyr::mutate( numspace = stringr::str_count(fullname, ' ')) |>
     tidyr::separate_wider_delim(fullname,
                                 delim = " ", 
                                  names_sep = "", 
@@ -221,32 +228,244 @@ separate_fullname <- function(frame,
     
     ### Now reconstruct the first name, father and mother name based on cases
     
+    ## Let summarize the logic...!
+    ## Based on the number of componnent in the full name -  ranging from 0 to 4
+    
+    ## Case A: "firstname_fathername_mother_name" 
+    # numspace == 0 ##  only firstname = fullname1  
+    # numspace  = 1 ## firstname = fullname1 & fathername = fullname2
+    # numspace  = 2 ## firstname = fullname1 & fathername  = fullname2 &   mothername  = fullname3
+    # numspace  = 3 ## firstname = paste0(fullname1, " ", fullname2) & fathername  = fullname3 & mothername  = fullname4
+    # numspace  = 4 ## firstname = paste0(fullname1, " ", fullname2, " ", fullname3) & fathername  = fullname4 &  mothername  = fullname5
+       
+    # ## Case B: "fathername_mothername_firstname"    
+    # numspace == 0 ##  only fathername = fullname1  
+    # numspace  = 1 ##  fathername = fullname1 & firstname = fullname2
+    # numspace  = 2 ##  fathername  = fullname1 & mothername  = fullname2 &   firstname  = fullname3
+    # numspace  = 3 ##  fathername  = fullname1 & mothername  = fullname2 & firstname = paste0(fullname3, " ", fullname3) 
+    # numspace  = 4 ##  fathername  = fullname1 &  mothername  = fullname2 & firstname = paste0(fullname3, " ", fullname4, " ", fullname5) 
+
+    ### Now reconstruct fathername
+    dplyr::mutate( fathername = dplyr::case_when(
+      is.na(fathername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 0  ~ "",
+      
+      is.na(fathername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 1  ~ fullname2,
+      
+      is.na(fathername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 2  ~ fullname2,
+    
+      is.na(fathername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 3  ~ fullname3,
+      
+      is.na(fathername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 4  ~ fullname4,
+      
+      
+      is.na(fathername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 0  ~ fullname1,
+      
+      is.na(fathername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 1  ~ fullname1,
+      
+      is.na(fathername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 2  ~ fullname1,
+      
+      is.na(fathername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 3  ~ fullname1,
+      
+      is.na(fathername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 4  ~ fullname1,
+      
+      TRUE ~ fathername    )) |>
+
+    ### Now reconstruct mothername
+    dplyr::mutate( mothername = dplyr::case_when(
+      is.na(mothername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 0  ~ "",
+      
+      is.na(mothername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 1  ~ "",
+      
+      is.na(mothername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 2  ~ fullname3,
+      
+      is.na(mothername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 3  ~ fullname4,
+      
+      is.na(mothername) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 4  ~ fullname5,
+      
+      
+      is.na(mothername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 0  ~ "",
+      
+      is.na(mothername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 1  ~ "",
+      
+      is.na(mothername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 2  ~ fullname2,
+      
+      is.na(mothername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 3  ~ fullname2,
+      
+      is.na(mothername) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 4  ~ fullname2,
+      
+      TRUE ~ mothername    )) |>
     
     
-    tidyr::separate( fullname, 
-                     #into=c("FirstName", "FatherName", "MotherName"), 
-                     sep=" ")  |>
+    ### Now reconstruct firstname
+    dplyr::mutate( firstname = dplyr::case_when(
+      is.na(firstname) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 0  ~ fullname1,
+      
+      is.na(firstname) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 1  ~ fullname1,
+      
+      is.na(firstname) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 2  ~ fullname1,
+      
+      is.na(firstname) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 3  ~ paste0(fullname1, " ", fullname2 ),
+      
+      is.na(firstname) &  namepattern == "firstname_fathername_mother_name" &
+        numspace == 4  ~ paste0(fullname1, " ", fullname2, " ", fullname3),
+      
+      is.na(firstname) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 0  ~ "",
+      
+      is.na(firstname) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 1  ~ fullname2,
+      
+      is.na(firstname) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 2  ~ fullname3,
+      
+      is.na(firstname) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 3  ~ paste0(fullname3, " ", fullname4 ) ,
+      
+      is.na(firstname) &  namepattern == "fathername_mothername_firstname" &
+        numspace == 4  ~ paste0(fullname3, " ", fullname4, " ", fullname5) ,
+      
+      TRUE ~ firstname    )) |>
+
+                   
     ###  Lets reset the prefix space replacement...
-    dplyr::mutate( FatherName = reset_spaces_based_on_patterns(vector = FatherName,
-                                                              nameprefix),
-                   MotherName = reset_spaces_based_on_patterns(vector = MotherName,
-                                                               nameprefix))
+    dplyr::mutate(
+      firstname = reset_spaces_based_on_patterns(vector = firstname),
+      fathername = reset_spaces_based_on_patterns(vector = fathername),
+      mothername = reset_spaces_based_on_patterns(vector = mothername)) |>
     
-  # 
+    ## then clean intermediate variables
+    dplyr::select( - fullname1, - fullname2, - fullname3, - fullname4, 
+                   - fullname5, fullname_or, - fullname_pref, - numspace )
+    
+    
   return(framesp)
 }
 
 ## Testing...
-frame <- data |> 
-  dplyr::filter(  is.na(nombres) ) |> 
-  dplyr::select(nombre_completo, name_pattern)  |>
-  dplyr::rename( fullname= "nombre_completo",
-                  namepattern = "name_pattern")
+# frame <- data |> 
+#   dplyr::filter(  is.na(nombres) ) |> 
+#   # dplyr::select(nombre_completo, name_pattern,
+#   #               nombres, apellido_paterno, apellido_materno)  |>
+#   separate_fullname(fullname= "nombre_completo", 
+#                     namepattern= "name_pattern",
+#                     firstname =  "nombres",
+#                     fathername = "apellido_paterno",
+#                     mothername = "apellido_materno") 
 
- 
-sep <- separate_fullname(frame = frame,
-                         fullname = "fullname", 
-                         namepattern= "namepattern")
+
+
+
+
+#' separate_firstname  
+#' 
+#' This function decomposition - in case there is a space in
+#' 
+#' Performing this name decomposition is important in order to enhance record linkage  
+#'  
+#' @param firstname first name 
+#' @return a clean list with c("firstname1","firstname2","firstname3")
+#' 
+#' @export
+separate_firstname <- function(frame, 
+                              firstname ) {
+  ## Let's go!  
+  framesp <- frame |>
+    ## Rename variable
+    dplyr::rename(  firstname = paste0(firstname) ) |>
+    
+    ###  Lets clean all spaces and get everything to upper
+    dplyr::mutate( firstname_or = firstname, 
+                   firstname = trimws(stringr::str_squish(firstname), 
+                                     which = "both", 
+                                     whitespace = "[ \t\r\n]"),
+                   firstname = toupper(firstname)) |>
+    dplyr::mutate( firstname = remove_spaces_based_on_patterns(vector = firstname) ) |>
+   
+    ## Counting the number of space to understand the structure of the full name
+    tidyr::separate_wider_delim(firstname,
+                                delim = " ", 
+                                names_sep = "", 
+                                too_few = "align_start") |>
+    dplyr::mutate( firstname1 = reset_spaces_based_on_patterns(vector = firstname1),
+                   firstname2 = reset_spaces_based_on_patterns(vector = firstname2),
+                   firstname3 = reset_spaces_based_on_patterns(vector = firstname3))
+  
+  return(framesp)
+}
+
+frame <- data |>
+  separate_firstname(firstname = "nombres" ) 
+       
+
+
+#' separate_familyname  
+#' 
+#' This function helps in decomposing names in case there is a space 
+#' in the father name and the mother name is empty
+#' 
+#' Performing this name decomposition is important in order to enhance record linkage  
+#'  
+#' @param fathername father name  
+#' @param mothername mother name 
+#' @return a clean list with c("firstname1","firstname2","firstname3")
+#' 
+#' @export
+separate_familyname <- function(frame, 
+                                fathername,
+                                mothername) {
+  ## Let's go!  
+  framesp <- frame |>
+    ## Rename variable
+    dplyr::rename(  fathername = paste0(fathername),
+                    mothername = paste0(mothername) ) |>
+    
+    ###  Lets clean all spaces and get everything to upper
+    dplyr::mutate(  fathername_or =  fathername, 
+                    fathername= trimws(stringr::str_squish( fathername), 
+                                      which = "both", 
+                                      whitespace = "[ \t\r\n]"),
+                    fathername = toupper( fathername)) |>
+    dplyr::mutate(  fathername = remove_spaces_based_on_patterns(vector =  fathername) ) |>
+    
+    ## Counting the number of space to understand the structure of the full name
+    tidyr::separate_wider_delim(firstname,
+                                delim = " ", 
+                                names_sep = "", 
+                                too_few = "align_start") |>
+    dplyr::mutate( firstname1 = reset_spaces_based_on_patterns(vector = firstname1),
+                   firstname2 = reset_spaces_based_on_patterns(vector = firstname2),
+                   firstname3 = reset_spaces_based_on_patterns(vector = firstname3))
+  
+  return(framesp)
+}
+
+frame <- data |>
+  separate_familyname(fathername = "nombres" ) 
+
 
 #' cleanvar
 #' 
@@ -284,12 +503,24 @@ data.prep <- data |>
   dplyr::filter( telefono != "NO REFIERE") |>
   
   ## Clean age_range
-  data |> dplyr::select(age_range) |> dplyr::distinct() |> dplyr::pull()
-  # dplyr::mutate( age_range = dplyr::case_when(
-  #   !(is.null(edad)) & (edad <5 ) ~ "0-4",
-  #   genero %in% c("M" , "MASCULINO" , "Masculino") ~ "M",
-  #   genero %in% c("X",  "Otro") ~ "Ot",
-  #   TRUE ~  age_range  )) |>
+  #data |> dplyr::select(age_range) |> dplyr::distinct() |> dplyr::pull()
+   dplyr::mutate( age_range = dplyr::case_when(
+     age_range == "18 A 59 AÑOS" ~ "0-4",
+      TRUE ~  age_range  )) |>
+  
+  ## Clean DOb & Age
+    clean_age( date_birth = "fecha_de_nacimiento",
+               date_record = "date_record",
+               age = "edad",
+               age_range = "age_range") |>
+  
+  ## Clean the names
+  separate_fullname(fullname= "nombre_completo", 
+                    namepattern= "name_pattern",
+                    firstname =  "nombres",
+                    fathername = "apellido_paterno",
+                    mothername = "apellido_materno")  |>
+  
   
   ## Clean the gender variable
   # data |> dplyr::select(genero) |> dplyr::distinct() |> dplyr::pull()
@@ -312,19 +543,25 @@ data.prep <- data |>
   dplyr::filter( nationality %in% c("VEN", "COL" )) |>
   ## Apply cleanvar()
   # Perform data cleaning on dfA using the clean_names function
-  dplyr::mutate_at( dplyr::vars(nombres, apellido_paterno, apellido_materno,
-                                asistencia, departamento, telefono,
+  dplyr::mutate_at( dplyr::vars(firstname, fathername, mothername,
+                                asistencia, departamento, #telefono,
                                 planilla, socio), 
                     list(new = cleanvar))  |>
   
   
   ### identify single data source
-  dplyr::mutate(datasource = paste0(socio_new, "_", planilla_new)) |>
+  dplyr::mutate(datasource = paste0(socio_new, "_", planilla_new)) #|>
   
-  # ## Retain only fields for record linkage
-  dplyr::select(datasource, nationality, nombres_new, apellido_paterno_new,
-                apellido_materno_new, asistencia_new, departamento_new,
-                telefono_new, gender)
+  # # ## Retain only fields for record linkage
+  # dplyr::select(datasource, nationality, 
+  #               firstname_new, fathername_new, mothername_new, 
+  #               asistencia_new, departamento_new,
+  #               telefono, gender)
+
+
+
+dput(names(data.prep))
+
 
 table(data.prep$gender, useNA = "ifany")
 table(data.prep$nationality, useNA = "ifany")
