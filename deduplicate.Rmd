@@ -483,7 +483,7 @@ separate_familyname <- function(frame,
                     fathername = toupper( fathername)) |>
     dplyr::mutate(  fathername = remove_spaces_based_on_patterns(vector =  fathername) ) |>
     
-    ## Counting the number of space to understand the structure of the full name
+   # separate
     tidyr::separate_wider_delim( fathername,
                                 delim = " ", 
                                 names_sep = "", 
@@ -632,7 +632,10 @@ data.prep <- data |>
 
 
 ```{r missing_gender}
+# beofre cleaning 
 table(data.prep$gender, useNA = "ifany")
+
+## identify the mising..
 missing_gender  <- data.prep |>
         dplyr::filter( is.na(gender)) |>
         dplyr::select( firstname1, gender) |>
@@ -642,7 +645,7 @@ missing_gender  <- data.prep |>
         dplyr::pull(firstname1)
       
 
-## lt's us an API to identify gender based on firstname
+## let's us an API to identify gender based on firstname
 # devtools::install_github("coccopuffs/GenderGuesser")  
 #missing_gender_result <-    GenderGuesser::guessGender(missing_gender)
 # write.csv(missing_gender_result, "missing_gender_result.csv", row.names = FALSE)
@@ -678,7 +681,7 @@ table(data.prep$gender, useNA = "ifany")
 
 ```{r list_source }
 ## Check the datasource that we will compare
-t <- table(data.prep$datasource, useNA = "ifany") |>
+table(data.prep$datasource, useNA = "ifany") |>
   as.data.frame() |>
   dplyr::rename( DataSource = "Var1") |>
   knitr::kable()
@@ -809,7 +812,7 @@ print(knitr::kable(matchedA |>
                gender )))
 }
 
-# dup <- dplyr::rows_append(dup, matchedA )
+dup <- dplyr::rows_append(dup, matchedA )
 
 # Confusion Matrice
 #fastLink::confusion(matches.out, threshold = 0.98)
@@ -823,6 +826,11 @@ print(knitr::kable(matchedA |>
 
 } 
 
+dup1 <- dup |>
+  dplyr::distinct() 
+
+write.csv(dup1, "dup.csv", row.names = FALSE )
+write.csv(data.prep, "data.prep.csv", row.names = FALSE )
 # Examine the EM object:
 #matches.out$EM
 

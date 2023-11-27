@@ -198,7 +198,7 @@ String treatment
 
 ```
 ## Define list of words to remove
-toRemove = c(" JR", " SR", 
+toRemove = c(" JR"," JUNIOR", " SR", 
                 " IV", " III", " II")
                 
 # Remove specified name suffixes
@@ -218,28 +218,42 @@ for (tR in toRemove) {
 ## Pre-processing: name Decomposition
 
 
-.pull-left[  
+.left-column[  
+
+
+
+Build a function to decompose name 
 
 From Full name to First name, Father and Mother name 
 
-This function clean name decomposition - in case it is not included in the original data
+Enhance significantly record linkage 
 
-Performing this name decomposition is important in order to enhance record linkage as the name pattern can be different (either "firstname_fathername_mother_name" or "fathername_mothername_firstname") which will minimise linkage probabibility
-
-In case, there's only 2 elements, it will fill only firstname and fathername
-
-The function will clean all unexpected spaces within the names, including double spaces 
-
-The function also identify family prefix to be bind such as for Spanish  "DEL", 'DE", "DE LOS", "DE LAS"
 
 
 ]
-.pull-right[ 
+.right-column[ 
 
 ```
+## Counting the number of space 
+ dplyr::mutate( numspace = stringr::str_count(fullname, ' ')) |>
+## separate into multiple column based on spaces 
+ tidyr::separate_wider_delim(fullname,
+                 delim = " ", names_sep = "", 
+                 too_few = "align_start") |>
+    
+### Now reconstruct the first name, father and mother name  
+# Let summarize the logic...!
+# Based on the number of componnent in the full name
 
-
-
+## Case A: "firstname_fathername_mother_name" - numspace
+# 0 - only firstname = fullname1  
+# 1 - firstname = fullname1 & fathername = fullname2
+# 2 - firstname = fullname1 & fathername  = fullname2 & 
+#                  mothername  = fullname3
+# 3 - firstname = paste0(fullname1, " ", fullname2) & 
+#    fathername  = fullname3 & mothername  = fullname4
+# 4  - firstname = paste0(fullname1, " ", fullname2, " ", fullname3) &
+#    fathername  = fullname4 &  mothername  = fullname5
 ```
 ]
 
@@ -249,7 +263,7 @@ The function also identify family prefix to be bind such as for Spanish  "DEL", 
 
 ## Pre-processing: Age & Date of Birth
 
-.pull-left[  
+.left-column[  
 
 Creating a dedicated function....
 
@@ -258,38 +272,73 @@ If the date of birth is present, it will parse it, extract year and month, and r
 If the date of birth is not mentioned, then it will use age and date_record to reconstruct an estimated date of birth - and recalculate the rest
 
 ]
-.pull-right[ 
+.right-column[ 
 
 ```
-data.prep <- data |>
-  
-dplyr::mutate(
-  DateOfBirth = lubridate::as_date(DoB),
-  
-  dob_day = as.numeric(
-      lubridate::day(DateOfBirth)),
-  
-  dob_month = as.numeric(
-      lubridate::month(DateOfBirth)),
-  
-  dob_year = as.numeric(year(
-      lubridate::year(DateOfBirth)),
-      
-  age = today()-     
-  
-  age_cohort = dplyr::case_when(
-      ~ "0-4",
-       ~ "4-11",
-       ~ "12-17",
-       ~ "18-59",
-       ~ "60+",
-    TRUE ~  NA  )   )
+ date_birth =     dplyr::case_when(
+    # Case we age but no DOB and date registration  
+    is.na(date_birth) & !(is.na(age)) & !(is.na(date_record))  ~
+   lubridate::as_date(date_record) - lubridate::dyears(age) ,
+   # Case we age but no DOB and date registration  
+   is.na(date_birth) & !(is.na(age)) & is.na(date_record) ~
+   lubridate::today() - lubridate::dyears(age) ,  
+   # Case take what we have...  
+   TRUE ~   lubridate::as_date(date_birth) ) ,
+   
+   ## make sure it is in the correct format and extract day, month year,
+   date_birth =  lubridate::as_date(date_birth),
+   day_birth = as.numeric( lubridate::day(date_birth)),
+   month_birth = as.numeric(  lubridate::month(date_birth)),
+   year_birth= as.numeric( lubridate::year(date_birth)),
+   
+   age = round( as.numeric(lubridate::today() - date_birth) / 365),     
+   age_range = dplyr::case_when(
+     age  <5    ~ "0-4", age >=5 & age <= 11 ~ "4-11",
+     age >= 12 & age <= 17 ~ "12-17", age >= 18 & age <= 59 ~ "18-59",
+     age >= 60     ~ "60+",  TRUE ~  age_range   )   )
     
 ```
 ]
 
  
+---
 
+## Pre-processing: Missing gender
+
+.left-column[  
+
+Missing genders prevents good matching 
+
+Possibility to use a package to get the gender based on the first name
+
+[genderize: A simple API to predict the gender of a person given their name](https://genderize.io/)
+
+]
+.right-column[ 
+
+```
+## identify the mising..
+missing_gender  <- data.prep |>
+        dplyr::filter( is.na(gender)) |>
+        dplyr::select( firstname1, gender) |>
+        dplyr::distinct() |>
+        dplyr::mutate(firstname1 = gsub(
+               "[[:punct:][:digit:]][[:space:]]",
+               "-", 
+               firstname1)) |>
+        dplyr::mutate(firstname1 = gsub(" ", "-", firstname1)) |> 
+        dplyr::pull(firstname1)
+      
+
+## let's us an API to identify gender based on firstname
+# devtools::install_github("coccopuffs/GenderGuesser")  
+missing_gender_result <-    GenderGuesser::guessGender(missing_gender)
+
+## bring this back into the data..
+```
+]
+
+ 
   
 
 
@@ -308,7 +357,7 @@ Each steps described above to be:
  
  * piped using the tidyverse approach
  
-Revise the[demo script](FastLink.html) and  [ applied real use case script](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.R)  to use the functions
+Revise the[demo script](FastLink.html) and  [applied real use case notebook](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.Rmd)  to use the functions
  
  ]
 .pull-right[ 
