@@ -648,11 +648,11 @@ missing_gender  <- data.prep |>
 ## let's us an API to identify gender based on firstname
 # devtools::install_github("coccopuffs/GenderGuesser")  
 #missing_gender_result <-    GenderGuesser::guessGender(missing_gender)
-# write.csv(missing_gender_result, "missing_gender_result.csv", row.names = FALSE)
+# write.csv(missing_gender_result, here::here("data-raw","missing_gender_result.csv"), row.names = FALSE)
 
 # Results are saved locally to avoid calling too many times the API
  
-missing_gender_result <- readr::read_csv("missing_gender_result.csv")
+missing_gender_result <- readr::read_csv(here::here("data-raw","missing_gender_result.csv"))
 
 missing_gender_results <- missing_gender_result |>
     dplyr::filter(!(is.na(gender))) |>
@@ -829,8 +829,8 @@ dup <- dplyr::rows_append(dup, matchedA )
 dup1 <- dup |>
   dplyr::distinct() 
 
-write.csv(dup1, "dup.csv", row.names = FALSE )
-write.csv(data.prep, "data.prep.csv", row.names = FALSE )
+write.csv(dup1, here::here("data-raw","dup.csv"), row.names = FALSE )
+write.csv(data.prep, here::here("data-raw","data.prep.csv"), row.names = FALSE )
 # Examine the EM object:
 #matches.out$EM
 

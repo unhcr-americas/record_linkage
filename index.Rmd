@@ -71,7 +71,7 @@ Can be numerous ones: ...
 
 ]
 .pull-right[
-![](record-linkage.png)
+![](img/record-linkage.png)
 ]
 
  
@@ -94,7 +94,7 @@ The recommended workflow includes to go through specific steps:
 
 ]
 .pull-right[
-![](concept.png)
+![](img/concept.png)
 ]
 
 ???
@@ -362,7 +362,7 @@ Revise the[demo script](FastLink.html) and  [applied real use case notebook](htt
  ]
 .pull-right[ 
 
-![](pipe.png)
+![](img/pipe.png)
 ]
  
 
