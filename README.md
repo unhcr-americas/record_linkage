@@ -1,11 +1,18 @@
 # A tutorial on how to use record linkage to remove duplicate from a Registration list
 
-
-
 Record linkage, also known as data matching or deduplication or Unique Entity Estimation (UEE), is the process of identifying and linking records within or between datasets that refer to the same entity or individual. The goal of record linkage is to reconcile and merge information from different non-matching sources to create a unified and accurate view of the underlying entities.
 
 In UNHCR context, this can be the case when merging registration list from different field partners, for instance when creating a sampling universe to organise a survey. Registration records form each list may vary in terms of data quality, format, and completeness. Record linkage helps to overcome these challenges by identifying and connecting related records, even when they do not have a common unique identifier.
 
+
+ * [Presentation](https://unhcr-americas.github.io/record_linkage/)
+ * [Full example based on dummy data](https://unhcr-americas.github.io/record_linkage/FastLink.html)
+ * [Pipeline on real data](https://github.com/unhcr-americas/record_linkage/blob/main/deduplicate.Rmd)
+
+
+
+## Process
+ 
 The process of record linkage typically involves several steps:
 
  * __Data Cleaning__: Before linking records, it is essential to clean and standardize the data to ensure consistency. This may involve tasks such as correcting typos, standardizing formats, and handling missing or incomplete information.
@@ -19,13 +26,9 @@ The process of record linkage typically involves several steps:
  * __Linking and Merging__: After determining which records are matches, the linked records are merged or consolidated to create a single, comprehensive record that combines information from the original sources.
  
  
- ## How to?
+## Reference
  
- There are numerous packages for Record Linkage, such as {RecordLinkage} & {fastLink}
- 
- In this [presentation](https://unhcr-americas.github.io/record_linkage/), we focus on  [Fastlink](https://github.com/kosukeimai/fastLink) which was also highlighted in this [presentation from UN Stat Commission](https://www.youtube.com/watch?v=S7boX8X4uXU) - a practical example from DANE in Colombia - matching a survey - - Gran encuesta integrada de hogares (GEIH) - with a registry - Registro Estadístico de Relaciones Laborales (RELAB) - 
- 
- You can check a full [demo here](https://unhcr-americas.github.io/record_linkage/FastLink.html)
+ There are numerous packages for Record Linkage, such as {RecordLinkage} & {fastLink}. In this repo, we focus on  [fastLink}](https://github.com/kosukeimai/fastLink) which was also highlighted in the [presentation from UN Stat Commission](https://www.youtube.com/watch?v=S7boX8X4uXU) displaying a practical example from DANE in Colombia, aiming at matching a national household survey (_Gran encuesta integrada de hogares - GEIH_) - with a registry (_Registro Estadístico de Relaciones Laborales - RELAB_). 
  
  You can also check the [Seminar on record linkage](https://github.com/cleanzr/record-linkage-tutorial)
 
