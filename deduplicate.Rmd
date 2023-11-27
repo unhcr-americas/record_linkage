@@ -1,11 +1,24 @@
+---
+title: "Records Deduplication"
+output:
+  unhcrdown::html_page:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r package, message=FALSE, warning=FALSE}
 ##################################################
 ### A script workflow for Record linkage ----------
 ##################################################
 
 library(tidyverse)
 # install.packages("fastLink")
-library(fastLink)  
+library(fastLink)
+```
 
+
+```{r data, message=FALSE, warning=FALSE}
 ## Load the data - 
 # which is here already the results of merging multiple list from different excel files
 data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
@@ -19,12 +32,14 @@ data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
                             "text", "text", "text", "text", "text", 
                             "text", "text")) |> 
      janitor::clean_names()
-
-
 #dput(names(data))
-## Cleaning functions ###############
+```
 
 
+
+## Cleaning functions
+
+```{r  function-clean_age}
 #' clean_age
 #' 
 #' This functions cleans the age identifiers in the context of record linkage.
@@ -67,7 +82,7 @@ clean_age <- function(frame,
          
          # Case we age but no DOB and date registration  
          is.na(date_birth) & !(is.na(age)) & is.na(date_record) ~
-           today() - lubridate::dyears(age) ,  
+           lubridate::today() - lubridate::dyears(age) ,  
          
          # Case take what we have...  
          TRUE ~   lubridate::as_date(date_birth) ) ,
@@ -83,7 +98,7 @@ clean_age <- function(frame,
          year_birth= as.numeric( 
           lubridate::year(date_birth)),
           
-        age = round( as.numeric(today() - date_birth) / 365),     
+        age = round( as.numeric(lubridate::today() - date_birth) / 365),     
             
         age_range = dplyr::case_when(
           ## if age cohort was already present and we have no DOb, retain it
@@ -117,7 +132,10 @@ clean_age <- function(frame,
 #              age_range = "age_range")
 
 
+```
 
+
+```{r  function-spaces_based_on_patterns}
 #' remove_spaces_based_on_patterns 
 #' Utility sub-function to remove spaces based on patterns
 #' This function helps cleaning name decomposition - in case it is not included in the original data
@@ -174,7 +192,10 @@ reset_spaces_based_on_patterns <- function(vector,
 }
 
 
+```
 
+
+```{r  function-separate_fullname}
 
 #' separate_fullname  
 #' 
@@ -380,10 +401,10 @@ separate_fullname <- function(frame,
 #                     fathername = "apellido_paterno",
 #                     mothername = "apellido_materno") 
 
+```
 
 
-
-
+```{r  function-separate_firstname }
 #' separate_firstname  
 #' 
 #' This function decomposition - in case there is a space in
@@ -406,6 +427,8 @@ separate_firstname <- function(frame,
                    firstname = trimws(stringr::str_squish(firstname), 
                                      which = "both", 
                                      whitespace = "[ \t\r\n]"),
+                   ## Clean strange typ e of space...
+                 #  firstname = gsub(" ", "[[:space:]]", firstname),
                    firstname = toupper(firstname)) |>
     dplyr::mutate( firstname = remove_spaces_based_on_patterns(vector = firstname) ) |>
    
@@ -421,10 +444,14 @@ separate_firstname <- function(frame,
   return(framesp)
 }
 
-framefirstname <- data |>
-  separate_firstname(firstname = "nombres" ) 
+## Testing
+# framefirstname <- data |>
+#   separate_firstname(firstname = "nombres" ) 
        
+```
 
+
+```{r  function-separate_familyname}
 
 #' separate_familyname  
 #' 
@@ -452,6 +479,7 @@ separate_familyname <- function(frame,
                     fathername= trimws(stringr::str_squish( fathername), 
                                       which = "both", 
                                       whitespace = "[ \t\r\n]"),
+                  #  fathername = gsub(" ", "[[:space:]]", fathername),
                     fathername = toupper( fathername)) |>
     dplyr::mutate(  fathername = remove_spaces_based_on_patterns(vector =  fathername) ) |>
     
@@ -476,7 +504,10 @@ separate_familyname <- function(frame,
 #   separate_familyname( fathernamevar = "apellido_paterno",
 #                        mothernamevar = "apellido_materno" ) 
 
+```
 
+
+```{r  function-cleanvar}
 #' cleanvar
 #' 
 #' function for data cleaning with additional name removal logic
@@ -505,7 +536,15 @@ cleanvar <- function(names_column,
   return(names_column_new)
 }
 
+```
 
+
+
+
+
+## Apply Cleaning
+
+```{r apply_clean}
 ## Pipeline for data post processing #####################
 data.prep <- data |>
   
@@ -545,6 +584,15 @@ data.prep <- data |>
     genero %in% c("X",  "Otro") ~ "Ot",
     TRUE ~  NA  )) |>
   
+  
+  ## Clean missing gender - using gender prediction based on first name - 
+  # table(data.prep$gender, useNA = "ifany")
+  # devtools::install_github("kalimu/genderizeR")
+  # dplyr::mutate(gender = dplyr::case_when(
+  #   is.na(gender) ~ genderize(firstname1, genderDB = givenNames, progress = FALSE),
+  #   TRUE ~  gender  )) |>
+  
+  
   ## Only retain the nationality of interest
   # data |> dplyr::select(nacionalidad) |> dplyr::distinct() |> dplyr::pull()
   dplyr::mutate(nationality = dplyr::case_when(
@@ -575,41 +623,140 @@ data.prep <- data |>
 
 
 
-dput(names(data.prep))
+# dput(names(data.prep))
+# 
+# 
+# table(data.prep$gender, useNA = "ifany")
+# table(data.prep$nationality, useNA = "ifany")
+```
 
+
+```{r missing_gender}
+table(data.prep$gender, useNA = "ifany")
+missing_gender  <- data.prep |>
+        dplyr::filter( is.na(gender)) |>
+        dplyr::select( firstname1, gender) |>
+        dplyr::distinct() |>
+        dplyr::mutate(firstname1 = gsub("[[:punct:][:digit:]][[:space:]]", "-", firstname1)) |>
+        dplyr::mutate(firstname1 = gsub(" ", "-", firstname1)) |> 
+        dplyr::pull(firstname1)
+      
+
+## lt's us an API to identify gender based on firstname
+# devtools::install_github("coccopuffs/GenderGuesser")  
+#missing_gender_result <-    GenderGuesser::guessGender(missing_gender)
+# write.csv(missing_gender_result, "missing_gender_result.csv", row.names = FALSE)
+
+# Results are saved locally to avoid calling too many times the API
+ 
+missing_gender_result <- readr::read_csv("missing_gender_result.csv")
+
+missing_gender_results <- missing_gender_result |>
+    dplyr::filter(!(is.na(gender))) |>
+    dplyr::mutate(  gender2  = dplyr::recode( gender,
+                   male = "M", female = "F")) |>
+    dplyr::rename( firstname1 = "name") |>
+    dplyr::select(firstname1, gender2)
+
+        
+
+## and now updata data.prep with the gender when missing..
+
+data.prep <- data.prep |> 
+  dplyr::left_join(missing_gender_results, by = c("firstname1")) |>
+  dplyr::mutate(gender = dplyr::if_else(is.na(gender), gender2, gender))
 
 table(data.prep$gender, useNA = "ifany")
-table(data.prep$nationality, useNA = "ifany")
 
+
+```
+
+
+
+
+## List all data sources
+
+```{r list_source }
 ## Check the datasource that we will compare
-table(data.prep$datasource, useNA = "ifany")
+t <- table(data.prep$datasource, useNA = "ifany") |>
+  as.data.frame() |>
+  dplyr::rename( DataSource = "Var1") |>
+  knitr::kable()
 
 ## See if can use departamento for blocking
-table(data.prep$datasource, data.prep$departamento_new, useNA = "ifany")
+#table(data.prep$datasource, data.prep$departamento_new, useNA = "ifany")
 
 alldatasource <- data.prep |> 
                  dplyr::select(datasource) |> 
                  dplyr::distinct() |> 
                  dplyr::pull()
 
-alldatasource
+#alldatasource
+
+alldatasource <- t(combn(alldatasource, 2, simplify = TRUE)) |>
+                  as.data.frame() |>
+                dplyr::mutate ( comparison = paste0(V1, "--to--", V2))
+
+```
 
 
+## Recursively search for all fuzzy duplicates
+
+```{r match, message=TRUE, warning=FALSE, comment=""}
+
+## Initialise the list with duplicate
+### 
+dup <- data.prep[0,]
+ 
+for (i in 1:nrow(alldatasource)) {
+  
+  # i <- 1
+  
+  datasourcea <- as.character(alldatasource[i,c("V1")])  #alldatasource[9]
+  datasourceb <- as.character(alldatasource[i,c("V2")]) # alldatasource[6]
+   
+  cat(paste0("\n ==================== \n"))
+  cat(paste0(i, " - Now comparing \n",  datasourcea, "\n with ", datasourceb, "\n\n"))
 ## Let's get 2 comparison dataset... ##########
 dfA  <- data.prep |> 
-  dplyr::filter(datasource == alldatasource[9]) |> 
+  dplyr::filter(datasource == datasourcea ) |> 
   dplyr::select( - datasource)
 
 dfB <- data.prep |> 
-  dplyr::filter(datasource == alldatasource[6])|> 
+  dplyr::filter(datasource == datasourceb )|> 
   dplyr::select( - datasource)
 
+
+# Delete rows that have missing First Name (FN), Last Name (LN), or Date of Birth (DOB).
+dfA <- dfA |>
+  dplyr::filter(!is.na(firstname1_new) & firstname1_new != "" &
+                !is.na(firstname2_new) & firstname2_new != "" &
+                !is.na(firstname1_new) & firstname1_new != "" &
+                !is.na(fathername_new) & fathername_new != "" &
+                !is.na(mothername_new) & mothername_new != "" &
+                !is.na(day_birth) & day_birth != "" &
+                !is.na(month_birth) & month_birth != "" &
+                !is.na(year_birth) & year_birth != "" & 
+                !is.na(gender) & gender != ""   )
+
+dfB <- dfB |>
+  dplyr::filter(!is.na(firstname1_new) & firstname1_new != "" &
+                !is.na(firstname2_new) & firstname2_new != "" &
+                !is.na(firstname1_new) & firstname1_new != "" &
+                !is.na(fathername_new) & fathername_new != "" &
+                !is.na(mothername_new) & mothername_new != "" &
+                !is.na(day_birth) & day_birth != "" &
+                !is.na(month_birth) & month_birth != "" &
+                !is.na(year_birth) & year_birth != "" & 
+                !is.na(gender) & gender != ""   )
+
+if( nrow(dfA) > 0 & nrow(dfB) > 0 ) {
 matches.out <- fastLink::fastLink(
   dfA = dfA, 
   dfB = dfB, 
   # Specify the vector of variable names to be used for matching.
   # These variable names should exist in both dfA and dfB
-  varnames = c("nationality" ,  
+  varnames = c(#"nationality" ,  
                "firstname1_new" ,"firstname2_new" , 
                "fathername_new" ,"mothername_new",
                "day_birth",  "month_birth", "year_birth",
@@ -630,7 +777,8 @@ matches.out <- fastLink::fastLink(
                     #  "telefono_new" 
                     #'dob_day', 'dob_month', 'dob_year'
                     ),
-  
+  #gender.field = "gender" ,
+  threshold.match = c(.85, .95),
   # Specify the number of CPU cores to utilize (parallel processing). 
   ## Get the number of detected cores minus 1,  Reserve one core for 
   #non-computational tasks to help prevent system slowdowns or unresponsiveness
@@ -638,56 +786,82 @@ matches.out <- fastLink::fastLink(
   return.all = TRUE,
   return.df = TRUE)
 
-## Review the matching in each orginal frame
-matchedA <- dfA[matches.out$matches$inds.a, ]
-matchedB <- dfB[matches.out$matches$inds.b, ]
-
-# Confusion Matrice
-fastLink::confusion(matches.out, threshold = 0.98)
-
-# Examine the EM object:
-#matches.out$EM
-
 # Summarize the accuracy of the match:
 # each column gives the match count, match rate,
 # false discovery rate (FDR) and false negative rate (FNR)
 # under different cutoffs for matches based on the posterior 
 # probability of a match. 
-summary(matches.out)
+print(summary(matches.out))
 
-## Gt the output...
-matched_dfs <- fastLink::getMatches(
-  dfA = dfA, 
-  dfB = dfB, 
-  fl.out = matches.out, 
-  threshold.match = 0.85
-)
+## Review the matching in each original frame
+matchedA <- dfA[matches.out$matches$inds.a, ]
+#matchedB <- dfB[matches.out$matches$inds.b, ]
 
-# Display the matches ###################
-# convert dfA rownames to a column 
-dfA_clean <- dfA |> rownames_to_column()
+# matchedA$listea <- datasourcea
+# matchedA$listeb <- datasourceb
+if ( nrow(matchedA) >0 ) {
+  
+print(knitr::kable(matchedA |> 
+               dplyr::select( nationality ,  
+               firstname1_new ,firstname2_new , 
+               fathername_new ,mothername_new,
+               day_birth,  month_birth, year_birth, 
+               gender )))
+}
 
-# convert dfB rownames to a column
-dfB_clean <- dfB |> rownames_to_column()  
+# dup <- dplyr::rows_append(dup, matchedA )
 
-# convert all columns in matches dataset to character, 
-#so they can be joined to the rownames
-matches_clean <- matched_dfs |>
-  dplyr::mutate(dplyr::across(dplyr::everything(), as.character))
-
-# Join matches to dfA, then add dfB
-# column "inds.b" is added to dfA
-complete <- dplyr::left_join(dfA_clean, 
-                             matches_clean, 
-                             by = c("rowname" = "inds.a"))
-
-# column(s) from dfB are added 
-complete <- dplyr::left_join(complete,
-                             dfB_clean, 
-                             by = c("inds.b" = "rowname"))
+# Confusion Matrice
+#fastLink::confusion(matches.out, threshold = 0.98)
 
 
+  
+} else {
+  cat( paste0("\n FAIL because of missing data!!! \n", datasourcea, ": ",nrow(dfA)," \n",
+               datasourceb, ": ",  nrow(dfB), "\n\n\n"))
+}
 
+} 
+
+# Examine the EM object:
+#matches.out$EM
+
+
+
+# ## Get the output...
+# matched_dfs <- fastLink::getMatches(
+#   dfA = dfA, 
+#   dfB = dfB, 
+#   fl.out = matches.out, 
+#   threshold.match = 0.85
+# )
+# 
+# # Display the matches ###################
+# # convert dfA rownames to a column 
+# dfA_clean <- dfA |> rownames_to_column()
+# 
+# # convert dfB rownames to a column
+# dfB_clean <- dfB |> rownames_to_column()  
+# 
+# # convert all columns in matches dataset to character, 
+# #so they can be joined to the rownames
+# matches_clean <- matched_dfs |>
+#   dplyr::mutate(dplyr::across(dplyr::everything(), as.character))
+# 
+# # Join matches to dfA, then add dfB
+# # column "inds.b" is added to dfA
+# complete <- dplyr::left_join(dfA_clean, 
+#                              matches_clean, 
+#                              by = c("rowname" = "inds.a"))
+# 
+# # column(s) from dfB are added 
+# complete <- dplyr::left_join(complete,
+#                              dfB_clean, 
+#                              by = c("inds.b" = "rowname"))
+```
+
+
+```{r blocking, include=FALSE, eval = FALSE}
 # Preprocessing Matches via Blocking #################
 blockgender_out <- fastLink::blockData(dfA, dfB, varnames = "gender")
 
@@ -772,3 +946,6 @@ agg.out <- fastLink::aggregateEM(em.list = list(link.1, link.2))
 
 
 # Preprocessing Matches via Blocking #################
+
+```
+
