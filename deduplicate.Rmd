@@ -21,16 +21,16 @@ library(fastLink)
 ```{r data, message=FALSE, warning=FALSE}
 ## Load the data - 
 # which is here already the results of merging multiple list from different excel files
-data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
+data <- readxl::read_excel(here::here("data-raw", "Registros3.xlsx"),
                            sheet = "Sheet1", 
                            col_types = c("numeric", 
-                             "text", "text", "text", "text", "text", 
-                             "text", "text", "date", "numeric", 
-                             "numeric", "numeric", "text", "text", 
-                            "text", "text", "text", "text", "text", 
-                            "text", "text", "text", "text", "text", 
-                            "text", "text", "text", "text", "text", 
-                            "text", "text")) |> 
+        "text", "text", "text", "text", "text", 
+        "text", "text", "date", "date", "numeric", 
+        "numeric", "text", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "text")) |> 
      janitor::clean_names()
 #dput(names(data))
 ```
@@ -954,6 +954,34 @@ agg.out <- fastLink::aggregateEM(em.list = list(link.1, link.2))
 
 
 # Preprocessing Matches via Blocking #################
+
+```
+
+
+```{r}
+## Duplicate manually identified in dup
+table(data.prep$dup, useNA = "ifany")
+
+## Remove the duplicate
+
+sampling.universe <- data.prep |>
+  ## Remove duplicate
+           dplyr::filter( dup == "0") |>
+  ## Keep only people over 15
+  dplyr::filter(age > 14) |>
+  dplyr::select( n,  firstname1, firstname2, firstname3,fathername,  mothername, 
+              gender, nationality,   date_birth,  
+              age, telefono,        departamento )
+
+#set.seed function
+set.seed(1976)
+  
+# Let set set a desired sample of 600  
+# Draw a random sample   from the data frame
+sample <- sampling.universe |>
+          dplyr::slice_sample( n = 600, replace = FALSE)
+
+write.csv(sample, here::here("data-raw","dup.csv"), row.names = FALSE )
 
 ```
 

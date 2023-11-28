@@ -29,12 +29,7 @@ library(fastLink)
 ```
 
 
-
-```{r include=FALSE}
-data <- readxl::read_excel(here::here("data-raw", "Registros2.xlsx"),
-    sheet = "Sheet1") |> janitor::clean_names()
-#names(data)
-```
+ 
 
 ##  Introduction
 
