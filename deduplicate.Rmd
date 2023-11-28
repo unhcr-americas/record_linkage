@@ -981,7 +981,7 @@ set.seed(1976)
 sample <- sampling.universe |>
           dplyr::slice_sample( n = 600, replace = FALSE)
 
-write.csv(sample, here::here("data-raw","dup.csv"), row.names = FALSE )
+write.csv(sample, here::here("data-raw","sample.csv"), row.names = FALSE )
 
 ```
 
